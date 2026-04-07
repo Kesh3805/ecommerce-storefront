@@ -6,8 +6,8 @@ export const siteConfig = {
   
   // API Configuration
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
-    graphqlEndpoint: process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:4000/graphql',
+    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4100',
+    graphqlEndpoint: process.env.NEXT_PUBLIC_GRAPHQL_URL || 'http://localhost:4100/graphql',
   },
   
   // Cart Configuration
