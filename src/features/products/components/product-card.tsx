@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Heart } from 'lucide-react';
@@ -13,10 +14,39 @@ interface ProductCardProps {
   product: Product;
   priority?: boolean;
   className?: string;
+  productHref?: string;
 }
 
-export function ProductCard({ product, priority = false, className }: ProductCardProps) {
+export function ProductCard({ product, priority = false, className, productHref }: ProductCardProps) {
   const { handle, title, vendor, featuredImage, priceRange, compareAtPriceRange, variants } = product;
+
+  const canRenderImage = (() => {
+    if (!featuredImage?.url) {
+      return false;
+    }
+
+    try {
+      const parsed = new URL(featuredImage.url);
+      return parsed.hostname !== 'example.com';
+    } catch {
+      return false;
+    }
+  })();
+
+  const useUnoptimizedImage = (() => {
+    if (!featuredImage?.url) {
+      return false;
+    }
+
+    try {
+      const parsed = new URL(featuredImage.url);
+      return parsed.hostname.endsWith('gstatic.com');
+    } catch {
+      return false;
+    }
+  })();
+
+  const [imageVisible, setImageVisible] = useState(canRenderImage);
   
   const minPrice = priceRange.minPrice;
   const compareAtPrice = compareAtPriceRange?.minPrice;
@@ -25,13 +55,14 @@ export function ProductCard({ product, priority = false, className }: ProductCar
   
   const isAvailable = variants.some((v) => v.availableForSale);
   const hasMultiplePrices = priceRange.minPrice.amount !== priceRange.maxPrice.amount;
+  const href = productHref || getProductUrl(handle);
 
   return (
     <article className={cn('group relative', className)}>
       {/* Image Container */}
-      <Link href={getProductUrl(handle)} className="block">
+      <Link href={href} className="block">
         <div className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
-          {featuredImage ? (
+          {imageVisible && featuredImage ? (
             <Image
               src={featuredImage.url}
               alt={featuredImage.altText || title}
@@ -39,6 +70,8 @@ export function ProductCard({ product, priority = false, className }: ProductCar
               sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               priority={priority}
+              unoptimized={useUnoptimizedImage}
+              onError={() => setImageVisible(false)}
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
@@ -82,7 +115,7 @@ export function ProductCard({ product, priority = false, className }: ProductCar
           </p>
         )}
         
-        <Link href={getProductUrl(handle)}>
+        <Link href={href}>
           <h3 className="text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors">
             {title}
           </h3>

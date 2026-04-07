@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node -e \"console.log('Store URLs:\\n- http://localhost:3001/stores/alice-s-apparel\\n- http://localhost:3001/stores/bob-s-electronics')\" && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

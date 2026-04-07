@@ -122,6 +122,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   const productPrice = formatCurrency(product.price);
   const productCompareAtPrice = formatCurrency(product.compare_at_price);
+  const productOptions = product.options ?? [];
+  const productVariants = product.variants ?? [];
 
   return (
     <div className="container py-8 md:py-12">
@@ -197,25 +199,25 @@ export default async function ProductPage({ params }: ProductPageProps) {
             )}
           </div>
 
-          {product.options.length > 0 ? (
+          {productOptions.length > 0 ? (
             <div className="rounded-xl border bg-card p-5">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Options</h2>
               <div className="space-y-3">
-                {product.options.map((option) => (
+                {productOptions.map((option) => (
                   <div key={option.name}>
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{option.name}</p>
-                    <p className="mt-1 text-sm text-foreground/90">{option.values.join(' • ')}</p>
+                    <p className="mt-1 text-sm text-foreground/90">{option.values.join(' | ')}</p>
                   </div>
                 ))}
               </div>
             </div>
           ) : null}
 
-          {product.variants.length > 0 ? (
+          {productVariants.length > 0 ? (
             <div className="rounded-xl border bg-card p-5">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Variants</h2>
               <div className="space-y-2">
-                {product.variants.map((variant) => {
+                {productVariants.map((variant) => {
                   const variantPrice = formatCurrency(variant.price);
                   const variantCompareAtPrice = formatCurrency(variant.compare_at_price);
                   const hasInventory = variant.inventory_available == null || variant.inventory_available > 0;

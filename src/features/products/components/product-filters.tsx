@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, X, SlidersHorizontal } from 'lucide-react';
+import { X, SlidersHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -57,6 +56,7 @@ export function ProductFilters({
     const existingFilter = activeFilters.find((f) => {
       if (filterType === 'productType') return f.productType === value;
       if (filterType === 'vendor') return f.vendor === value;
+      if (filterType === 'category') return f.category === value;
       if (filterType === 'tag') return f.tag === value;
       return false;
     });
@@ -67,6 +67,7 @@ export function ProductFilters({
       const newFilter: FilterInput = {};
       if (filterType === 'productType') newFilter.productType = value;
       if (filterType === 'vendor') newFilter.vendor = value;
+      if (filterType === 'category') newFilter.category = value;
       if (filterType === 'tag') newFilter.tag = value;
       onFilterChange([...activeFilters, newFilter]);
     }
@@ -91,7 +92,7 @@ export function ProductFilters({
   const activeFilterCount = activeFilters.length;
 
   // Desktop Filters Sidebar Content
-  const FilterContent = () => (
+  const renderFilterContent = () => (
     <div className="space-y-6">
       {/* Price Range */}
       <div>
@@ -129,6 +130,7 @@ export function ProductFilters({
               const isActive = activeFilters.some((f) => {
                 if (filter.id === 'productType') return f.productType === value.input;
                 if (filter.id === 'vendor') return f.vendor === value.input;
+                if (filter.id === 'category') return f.category === value.input;
                 if (filter.id === 'tag') return f.tag === value.input;
                 return false;
               });
@@ -175,12 +177,12 @@ export function ProductFilters({
                 )}
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] overflow-y-auto">
+            <SheetContent side="left" className="w-75 overflow-y-auto">
               <SheetHeader>
                 <SheetTitle>Filters</SheetTitle>
               </SheetHeader>
               <div className="mt-6">
-                <FilterContent />
+                {renderFilterContent()}
               </div>
               {activeFilterCount > 0 && (
                 <div className="mt-6 pt-4 border-t">
@@ -198,7 +200,7 @@ export function ProductFilters({
 
           {/* Sort Dropdown */}
           <Select value={sortValue} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-45">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
@@ -220,6 +222,7 @@ export function ProductFilters({
             const label =
               filter.productType ||
               filter.vendor ||
+              filter.category ||
               filter.tag ||
               (filter.price
                 ? `$${filter.price.min || 0} - $${filter.price.max || '∞'}`
@@ -268,6 +271,7 @@ export function ProductFiltersSidebar({
     const existingFilter = activeFilters.find((f) => {
       if (filterType === 'productType') return f.productType === value;
       if (filterType === 'vendor') return f.vendor === value;
+      if (filterType === 'category') return f.category === value;
       if (filterType === 'tag') return f.tag === value;
       return false;
     });
@@ -278,6 +282,7 @@ export function ProductFiltersSidebar({
       const newFilter: FilterInput = {};
       if (filterType === 'productType') newFilter.productType = value;
       if (filterType === 'vendor') newFilter.vendor = value;
+      if (filterType === 'category') newFilter.category = value;
       if (filterType === 'tag') newFilter.tag = value;
       onFilterChange([...activeFilters, newFilter]);
     }
@@ -294,7 +299,7 @@ export function ProductFiltersSidebar({
   };
 
   return (
-    <aside className="hidden lg:block w-64 flex-shrink-0">
+    <aside className="hidden w-64 shrink-0 lg:block">
       <div className="sticky top-20 space-y-6">
         <h2 className="font-semibold text-lg">Filters</h2>
 
@@ -334,6 +339,7 @@ export function ProductFiltersSidebar({
                 const isActive = activeFilters.some((f) => {
                   if (filter.id === 'productType') return f.productType === value.input;
                   if (filter.id === 'vendor') return f.vendor === value.input;
+                  if (filter.id === 'category') return f.category === value.input;
                   if (filter.id === 'tag') return f.tag === value.input;
                   return false;
                 });

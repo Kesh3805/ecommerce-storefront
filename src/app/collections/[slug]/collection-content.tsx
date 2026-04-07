@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProductCard, ProductFilters, ProductFiltersSidebar, Pagination } from '@/features/products/components';
 import type { Collection, ProductConnection, FilterInput, ProductSortKey, SearchFilter } from '@/types';
@@ -13,22 +13,49 @@ interface CollectionContentProps {
     };
   };
   initialSort: string;
+  storeSlug?: string;
+  initialCountryCode?: string;
 }
 
-export function CollectionContent({ collection, initialSort }: CollectionContentProps) {
+export function CollectionContent({ collection, initialSort, storeSlug, initialCountryCode }: CollectionContentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
-  const [activeFilters, setActiveFilters] = useState<FilterInput[]>([]);
+
+  const activeFilters = useMemo(() => {
+    const parsed: FilterInput[] = [];
+    const vendor = searchParams.get('vendor');
+    const category = searchParams.get('category');
+    const min = searchParams.get('minPrice');
+    const max = searchParams.get('maxPrice');
+
+    if (vendor) {
+      parsed.push({ vendor });
+    }
+
+    if (category) {
+      parsed.push({ category });
+    }
+
+    if (min || max) {
+      parsed.push({
+        price: {
+          min: min ? Number(min) : undefined,
+          max: max ? Number(max) : undefined,
+        },
+      });
+    }
+
+    return parsed;
+  }, [searchParams]);
   
   const products = collection.products.edges.map((edge) => edge.node);
   const totalCount = collection.products.totalCount;
   const filters = collection.products.filters || [];
   
   // Parse sort value
-  const [sortKey, direction] = initialSort.includes('_')
-    ? initialSort.split('_')
-    : [initialSort, 'ASC'];
+  const hasDirection = initialSort.endsWith('_ASC') || initialSort.endsWith('_DESC');
+  const sortKey = hasDirection ? initialSort.replace(/_(ASC|DESC)$/, '') : initialSort;
+  const direction = hasDirection ? (initialSort.endsWith('_DESC') ? 'DESC' : 'ASC') : 'ASC';
   
   const handleSortChange = useCallback(
     (newSortKey: ProductSortKey, reverse: boolean) => {
@@ -40,10 +67,42 @@ export function CollectionContent({ collection, initialSort }: CollectionContent
     [router, searchParams]
   );
   
-  const handleFilterChange = useCallback((newFilters: FilterInput[]) => {
-    setActiveFilters(newFilters);
-    // In a real implementation, this would update URL params and refetch
-  }, []);
+  const handleFilterChange = useCallback(
+    (newFilters: FilterInput[]) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const vendor = newFilters.find((filter) => filter.vendor)?.vendor;
+      const category = newFilters.find((filter) => filter.category)?.category;
+      const price = newFilters.find((filter) => filter.price)?.price;
+
+      if (vendor) {
+        params.set('vendor', vendor);
+      } else {
+        params.delete('vendor');
+      }
+
+      if (category) {
+        params.set('category', category);
+      } else {
+        params.delete('category');
+      }
+
+      if (price?.min != null) {
+        params.set('minPrice', String(price.min));
+      } else {
+        params.delete('minPrice');
+      }
+
+      if (price?.max != null) {
+        params.set('maxPrice', String(price.max));
+      } else {
+        params.delete('maxPrice');
+      }
+
+      params.delete('page');
+      router.push(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
   
   const handlePageChange = useCallback(
     (page: number) => {
@@ -56,6 +115,10 @@ export function CollectionContent({ collection, initialSort }: CollectionContent
   
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
   const totalPages = Math.ceil(totalCount / siteConfig.products.perPage);
+  const storeSlugFromQuery = searchParams.get('storeSlug');
+  const effectiveStoreSlug = storeSlug || storeSlugFromQuery;
+  const countryFromQuery = searchParams.get('country') || undefined;
+  const effectiveCountryCode = countryFromQuery || initialCountryCode;
 
   return (
     <div className="flex gap-8">
@@ -88,6 +151,9 @@ export function CollectionContent({ collection, initialSort }: CollectionContent
                   key={product.id}
                   product={product}
                   priority={index < 8}
+                  productHref={effectiveStoreSlug
+                    ? `/stores/${effectiveStoreSlug}/products/${product.handle}${effectiveCountryCode ? `?country=${effectiveCountryCode}` : ''}`
+                    : undefined}
                 />
               ))}
             </div>

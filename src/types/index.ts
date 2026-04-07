@@ -270,6 +270,7 @@ export type ProductSortKey = 'RELEVANCE' | 'BEST_SELLING' | 'CREATED_AT' | 'PRIC
 export interface FilterInput {
   productType?: string;
   vendor?: string;
+  category?: string;
   available?: boolean;
   price?: PriceRangeFilter;
   tag?: string;
