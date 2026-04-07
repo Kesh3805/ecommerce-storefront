@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
+import { useShallow } from 'zustand/react/shallow';
 import type { Cart, CartLine, ProductVariant, Product } from '@/types';
 import { siteConfig } from '@/config';
 
@@ -232,26 +233,63 @@ export const useCartStore = create<CartState>()(
 
 export const useCart = () => useCartStore((state) => state.cart);
 export const useCartId = () => useCartStore((state) => state.cartId);
-export const useCartItems = () => useCartStore((state) => state.getCartItems());
-export const useCartItemCount = () => useCartStore((state) => state.getItemCount());
-export const useCartSubtotal = () => useCartStore((state) => state.getSubtotal());
+export const useLocalItems = () => useCartStore((state) => state.localItems);
 export const useCartOpen = () => useCartStore((state) => state.isOpen);
 export const useCartLoading = () => useCartStore((state) => state.isLoading);
 export const useCartError = () => useCartStore((state) => state.error);
 
+// Computed hooks - these use primitive values to avoid reference issues
+export const useCartItemCount = () =>
+  useCartStore((state) => {
+    // Prefer server cart if available
+    if (state.cart) {
+      return state.cart.totalQuantity;
+    }
+    // Fall back to local items
+    return state.localItems.reduce((sum, item) => sum + item.quantity, 0);
+  });
+
+export const useCartSubtotal = () =>
+  useCartStore((state) => {
+    // Prefer server cart if available
+    if (state.cart) {
+      return parseFloat(state.cart.cost.subtotalAmount.amount);
+    }
+    // Calculate from local items
+    return state.localItems.reduce((sum, item) => {
+      const price = parseFloat(item.variant.price.amount);
+      return sum + price * item.quantity;
+    }, 0);
+  });
+
+// For cart items, use useShallow since it returns an array
+export const useCartItems = () =>
+  useCartStore(
+    useShallow((state) => {
+      // Prefer server cart if available
+      if (state.cart) {
+        return state.cart.lines;
+      }
+      // Return local items
+      return state.localItems;
+    })
+  );
+
 export const useCartActions = () =>
-  useCartStore((state) => ({
-    setCart: state.setCart,
-    setCartId: state.setCartId,
-    clearCart: state.clearCart,
-    addLocalItem: state.addLocalItem,
-    updateLocalItemQuantity: state.updateLocalItemQuantity,
-    removeLocalItem: state.removeLocalItem,
-    clearLocalItems: state.clearLocalItems,
-    openCart: state.openCart,
-    closeCart: state.closeCart,
-    toggleCart: state.toggleCart,
-    setLoading: state.setLoading,
-    setSyncing: state.setSyncing,
-    setError: state.setError,
-  }));
+  useCartStore(
+    useShallow((state) => ({
+      setCart: state.setCart,
+      setCartId: state.setCartId,
+      clearCart: state.clearCart,
+      addLocalItem: state.addLocalItem,
+      updateLocalItemQuantity: state.updateLocalItemQuantity,
+      removeLocalItem: state.removeLocalItem,
+      clearLocalItems: state.clearLocalItems,
+      openCart: state.openCart,
+      closeCart: state.closeCart,
+      toggleCart: state.toggleCart,
+      setLoading: state.setLoading,
+      setSyncing: state.setSyncing,
+      setError: state.setError,
+    }))
+  );
