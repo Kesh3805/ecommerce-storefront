@@ -36,7 +36,7 @@ export function ProductCard({ product, priority = false, className, productHref 
   return (
     <article className={cn('group relative', className)}>
       {/* Image Container */}
-      <Link href={href} className="block">
+      <Link href={href} prefetch={false} className="block">
         <div className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
           {imageVisible && normalizedFeaturedImageUrl ? (
             <Image
@@ -91,7 +91,7 @@ export function ProductCard({ product, priority = false, className, productHref 
           </p>
         )}
 
-        <Link href={href}>
+        <Link href={href} prefetch={false}>
           <h3 className="text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors">
             {title}
           </h3>

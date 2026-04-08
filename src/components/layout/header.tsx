@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Search, ShoppingBag, User, Menu, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,9 +23,12 @@ const navigation = [
 export function Header() {
   const router = useRouter();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [inferredStoreId, setInferredStoreId] = useState<number | null>(null);
   const [storedStoreId, setStoredStoreId] = useState<number | null>(null);
+  const [availableCountryCodes, setAvailableCountryCodes] = useState<string[]>(COUNTRY_OPTIONS.map((country) => country.code));
+  const defaultCountryCodes = useMemo(() => COUNTRY_OPTIONS.map((country) => country.code), []);
   const cartItemCount = useCartItemCount();
   const { openCart } = useCartActions();
   const pathname = usePathname();
@@ -33,11 +36,21 @@ export function Header() {
   const activeStoreIdFromQuery = searchParams.get('storeId');
   const activeStoreSlugFromQuery = searchParams.get('storeSlug');
   const activeCountry = normalizeCountryCode(searchParams.get('country')) || COUNTRY_OPTIONS[0]?.code || 'US';
+  const searchQueryFromUrl = (searchParams.get('q') || '').trim();
 
   const activeStoreSlug = useMemo(() => {
     const match = pathname.match(/^\/stores\/([^/]+)/);
     return match?.[1] || null;
   }, [pathname]);
+
+  const rememberStoreId = useCallback((value: number) => {
+    setStoredStoreId(value);
+    window.localStorage.setItem('activeStoreId', String(value));
+  }, []);
+
+  const resetAvailableCountryCodes = useCallback(() => {
+    setAvailableCountryCodes(defaultCountryCodes);
+  }, [defaultCountryCodes]);
 
   useEffect(() => {
     if (!activeStoreSlug) {
@@ -61,7 +74,7 @@ export function Header() {
           const resolved = match?.store_id ?? null;
           setInferredStoreId(resolved);
           if (resolved) {
-            window.localStorage.setItem('activeStoreId', String(resolved));
+            rememberStoreId(resolved);
           }
         }
       } catch {
@@ -76,14 +89,13 @@ export function Header() {
     return () => {
       cancelled = true;
     };
-  }, [activeStoreSlug]);
+  }, [activeStoreSlug, rememberStoreId]);
 
   useEffect(() => {
     if (activeStoreIdFromQuery) {
       const parsed = Number(activeStoreIdFromQuery);
       if (Number.isInteger(parsed) && parsed > 0) {
-        setStoredStoreId(parsed);
-        window.localStorage.setItem('activeStoreId', String(parsed));
+        rememberStoreId(parsed);
       }
       return;
     }
@@ -95,15 +107,78 @@ export function Header() {
 
     const parsed = Number(fromStorage);
     if (Number.isInteger(parsed) && parsed > 0) {
-      setStoredStoreId(parsed);
+      rememberStoreId(parsed);
     }
-  }, [activeStoreIdFromQuery]);
+  }, [activeStoreIdFromQuery, rememberStoreId]);
 
   const activeStoreId = activeStoreIdFromQuery
     || (activeStoreSlug ? (inferredStoreId ? String(inferredStoreId) : null) : null)
     || (storedStoreId ? String(storedStoreId) : null);
 
   const effectiveStoreSlug = activeStoreSlug || activeStoreSlugFromQuery;
+
+  useEffect(() => {
+    setSearchQuery(searchQueryFromUrl);
+  }, [searchQueryFromUrl]);
+
+  const countrySelectOptions = useMemo(() => {
+    const codeSet = new Set(availableCountryCodes);
+    return COUNTRY_OPTIONS.filter((country) => codeSet.has(country.code));
+  }, [availableCountryCodes]);
+
+  const effectiveCountry = countrySelectOptions.some((country) => country.code === activeCountry)
+    ? activeCountry
+    : countrySelectOptions[0]?.code || COUNTRY_OPTIONS[0]?.code || 'US';
+
+  useEffect(() => {
+    if (!activeStoreId) {
+      resetAvailableCountryCodes();
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAvailableCountries = async () => {
+      try {
+        const resolvedStoreId = Number(activeStoreId);
+        if (!Number.isInteger(resolvedStoreId) || resolvedStoreId <= 0) {
+          if (!cancelled) {
+            resetAvailableCountryCodes();
+          }
+          return;
+        }
+
+        const countries = await storefrontService.getAvailableCountries(resolvedStoreId);
+        if (cancelled) {
+          return;
+        }
+
+        const normalized = [...new Set(countries.map((code) => normalizeCountryCode(code)).filter((code): code is string => !!code))].sort();
+        setAvailableCountryCodes(normalized.length > 0 ? normalized : defaultCountryCodes);
+      } catch {
+        if (!cancelled) {
+          resetAvailableCountryCodes();
+        }
+      }
+    };
+
+    loadAvailableCountries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStoreId, defaultCountryCodes, resetAvailableCountryCodes]);
+
+  useEffect(() => {
+    if (!effectiveCountry || effectiveCountry === activeCountry) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('country', effectiveCountry);
+    const nextQuery = params.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [activeCountry, effectiveCountry, pathname, router, searchParams]);
 
   const appendCountryParam = (href: string): string => {
     if (!href.startsWith('/')) {
@@ -112,8 +187,8 @@ export function Header() {
 
     const [path, query = ''] = href.split('?');
     const params = new URLSearchParams(query);
-    if (activeCountry) {
-      params.set('country', activeCountry);
+    if (effectiveCountry) {
+      params.set('country', effectiveCountry);
     } else {
       params.delete('country');
     }
@@ -135,6 +210,51 @@ export function Header() {
     const nextQuery = params.toString();
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   };
+
+  const handleSearchSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      const normalizedQuery = searchQuery.trim();
+      if (normalizedQuery.length < 2) {
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.set('q', normalizedQuery);
+
+      if (effectiveCountry) {
+        params.set('country', effectiveCountry);
+      }
+
+      if (effectiveStoreSlug) {
+        params.set('storeSlug', effectiveStoreSlug);
+      } else if (activeStoreId) {
+        params.set('storeId', activeStoreId);
+      }
+
+      router.push(`/search?${params.toString()}`);
+      setIsSearchOpen(false);
+    },
+    [activeStoreId, effectiveCountry, effectiveStoreSlug, router, searchQuery],
+  );
+
+  const handleOpenSearchPage = useCallback(() => {
+    const params = new URLSearchParams();
+
+    if (effectiveCountry) {
+      params.set('country', effectiveCountry);
+    }
+
+    if (effectiveStoreSlug) {
+      params.set('storeSlug', effectiveStoreSlug);
+    } else if (activeStoreId) {
+      params.set('storeId', activeStoreId);
+    }
+
+    const nextQuery = params.toString();
+    router.push(nextQuery ? `/search?${nextQuery}` : '/search');
+  }, [activeStoreId, effectiveCountry, effectiveStoreSlug, router]);
 
   const getNavHref = (href: string): string => {
     if (!href.startsWith('/collections/')) {
@@ -205,12 +325,12 @@ export function Header() {
         {/* Right Side Actions */}
         <div className="flex flex-1 items-center justify-end space-x-2">
           <div className="hidden lg:block min-w-47.5">
-            <Select value={activeCountry} onValueChange={handleCountryChange}>
+            <Select value={effectiveCountry} onValueChange={handleCountryChange}>
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="Country" />
               </SelectTrigger>
               <SelectContent>
-                {COUNTRY_OPTIONS.map((country) => (
+                {countrySelectOptions.map((country) => (
                   <SelectItem key={country.code} value={country.code}>
                     {country.name} ({country.code})
                   </SelectItem>
@@ -222,21 +342,32 @@ export function Header() {
           {/* Search */}
           <div className="hidden sm:flex items-center">
             {isSearchOpen ? (
-              <div className="flex items-center">
+              <form className="flex items-center" onSubmit={handleSearchSubmit}>
                 <Input
                   type="search"
                   placeholder="Search products..."
                   className="w-50 lg:w-75"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
                   autoFocus
                 />
                 <Button
+                  type="submit"
+                  variant="ghost"
+                  size="icon"
+                >
+                  <Search className="h-4 w-4" />
+                  <span className="sr-only">Submit search</span>
+                </Button>
+                <Button
+                  type="button"
                   variant="ghost"
                   size="icon"
                   onClick={() => setIsSearchOpen(false)}
                 >
                   <X className="h-4 w-4" />
                 </Button>
-              </div>
+              </form>
             ) : (
               <Button
                 variant="ghost"
@@ -250,7 +381,7 @@ export function Header() {
           </div>
 
           {/* Mobile Search */}
-          <Button variant="ghost" size="icon" className="sm:hidden">
+          <Button variant="ghost" size="icon" className="sm:hidden" onClick={handleOpenSearchPage}>
             <Search className="h-5 w-5" />
             <span className="sr-only">Search</span>
           </Button>

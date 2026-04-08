@@ -50,7 +50,6 @@ export default async function StorePage({ params, searchParams }: StorePageProps
   const { slug } = await params;
   const query = searchParams ? await searchParams : undefined;
   const requestedCountry = normalizeCountryCode(query?.country);
-
   const store = await storefrontService.getPublicStoreBySlug(slug, 12, requestedCountry).catch(() => null);
 
   if (!store) {
@@ -60,26 +59,10 @@ export default async function StorePage({ params, searchParams }: StorePageProps
   const activeCountry = requestedCountry;
   const countryQuery = activeCountry ? `?country=${activeCountry}` : '';
 
-  const collections = await collectionService.getCollections(MAX_COLLECTION_SECTIONS, store.store_id).catch(() => []);
-  const collectionSections = await Promise.all(
-    collections.slice(0, MAX_COLLECTION_SECTIONS).map(async (collection) => {
-      const detail = await collectionService
-        .getCollectionByHandle({
-          handle: collection.handle,
-          storeId: store.store_id,
-          countryCode: activeCountry,
-          first: COLLECTION_PREVIEW_PRODUCT_LIMIT,
-          page: 1,
-          sortKey: 'BEST_SELLING',
-        })
-        .catch(() => null);
-
-      return {
-        collection,
-        products: detail?.products.edges.map((edge) => edge.node) || [],
-      };
-    }),
-  );
+  // Optimized: fetch all collections with their products in a single GraphQL request
+  const collectionSections = await collectionService
+    .getCollectionsWithProducts(store.store_id, COLLECTION_PREVIEW_PRODUCT_LIMIT, activeCountry, MAX_COLLECTION_SECTIONS)
+    .catch(() => []);
 
   const theme = getStoreTheme(store.name);
 
@@ -105,7 +88,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
               <div key={collection.id} className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold tracking-tight">{collection.title}</h2>
-                  <Link href={`/stores/${slug}/collections/${collection.handle}${countryQuery}`} className={`text-sm font-medium ${theme.accent} hover:underline`}>
+                  <Link href={`/stores/${slug}/collections/${collection.handle}${countryQuery}`} prefetch={false} className={`text-sm font-medium ${theme.accent} hover:underline`}>
                     View all
                   </Link>
                 </div>
@@ -119,6 +102,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
                         <Link
                           key={product.id}
                           href={`/stores/${slug}/products/${product.handle}${countryQuery}`}
+                          prefetch={false}
                           className={`rounded-xl border p-3 transition-transform hover:-translate-y-1 ${theme.panel}`}
                         >
                           <div className="relative aspect-square overflow-hidden rounded-lg bg-black/10">
@@ -156,7 +140,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
             const productImageUrl = normalizeMediaUrl(product.image_url);
 
             return (
-              <Link key={product.product_id} href={`/stores/${slug}/products/${product.handle}${countryQuery}`} className={`rounded-2xl border p-4 transition-transform hover:-translate-y-1 ${theme.panel}`}>
+              <Link key={product.product_id} href={`/stores/${slug}/products/${product.handle}${countryQuery}`} prefetch={false} className={`rounded-2xl border p-4 transition-transform hover:-translate-y-1 ${theme.panel}`}>
                 <div className="relative aspect-4/3 overflow-hidden rounded-xl bg-black/10">
                   {productImageUrl ? (
                     <Image

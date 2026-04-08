@@ -60,12 +60,12 @@ function sanitizeDescriptionHtml(html: string): string {
 }
 
 export function StoreProductView({ slug, product, countryCode }: StoreProductViewProps) {
-  const media = useMemo(
+  const productMedia = useMemo(
     () => Array.from(new Set([...(product.media_urls || []), ...(product.image_url ? [product.image_url] : [])].filter(Boolean))),
     [product.media_urls, product.image_url],
   );
 
-  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
+  const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
 
   const initialSelectedByOption = useMemo(() => {
     const firstVariant = product.variants?.[0];
@@ -128,7 +128,23 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
     return isSelectionComplete && !selectedVariant;
   }, [product.options, selectedByOption, selectedVariant]);
 
-  const selectedImage = media[selectedMediaIndex] || product.image_url;
+  const media = useMemo(() => {
+    const variantMedia = Array.isArray(selectedVariant?.media_urls)
+      ? selectedVariant.media_urls.filter((url) => Boolean(url))
+      : [];
+
+    if (variantMedia.length > 0) {
+      return Array.from(new Set(variantMedia));
+    }
+
+    return productMedia;
+  }, [selectedVariant, productMedia]);
+
+  const selectedImage = (
+    selectedMediaUrl && media.includes(selectedMediaUrl)
+      ? selectedMediaUrl
+      : media[0]
+  ) || product.image_url;
   const canRenderSelectedImage = isValidImage(selectedImage);
   const countryQuery = countryCode ? `?country=${countryCode}` : '';
 
@@ -137,7 +153,7 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
       <div className="mb-6 flex items-center justify-between rounded-xl border bg-card px-4 py-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/stores/${slug}${countryQuery}`}>
+            <Link href={`/stores/${slug}${countryQuery}`} prefetch={false}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -159,8 +175,8 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
               <button
                 type="button"
                 key={`${item}-${index}`}
-                className={`h-20 w-20 overflow-hidden rounded-md border ${index === selectedMediaIndex ? 'ring-2 ring-primary' : ''}`}
-                onClick={() => setSelectedMediaIndex(index)}
+                className={`h-20 w-20 overflow-hidden rounded-md border ${item === selectedImage ? 'ring-2 ring-primary' : ''}`}
+                onClick={() => setSelectedMediaUrl(item)}
               >
                 {isValidImage(item) ? (
                   <Image src={item} alt={product.title} width={80} height={80} className="h-full w-full object-cover" unoptimized={isUnoptimizedImage(item)} />

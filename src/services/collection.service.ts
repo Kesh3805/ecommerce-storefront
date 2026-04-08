@@ -1,6 +1,6 @@
 import { getGraphQLClient } from '@/lib/graphql/client';
 import { gql } from 'graphql-request';
-import type { Collection, ProductConnection, ProductSortKey, FilterInput, SearchFilter } from '@/types';
+import type { Collection, ProductConnection, ProductSortKey, FilterInput, SearchFilter, Product } from '@/types';
 import { normalizeMediaUrl } from '@/lib/utils';
 import { storefrontService } from './storefront.service';
 
@@ -130,6 +130,37 @@ const GET_ALL_COLLECTIONS = gql`
       image_url
       collection_type
       is_visible
+    }
+  }
+`;
+
+// Optimized query that fetches collections with products in a single request
+const GET_COLLECTIONS_WITH_PRODUCTS = gql`
+  query GetCollectionsWithProducts($filter: CollectionFilterInput, $productLimit: Int!, $countryCode: String) {
+    collections(filter: $filter) {
+      collection_id
+      store_id
+      name
+      slug
+      description
+      image_url
+      collection_type
+      is_visible
+      products(limit: $productLimit, countryCode: $countryCode) {
+        product_id
+        title
+        status
+        brand
+        variants {
+          variant_id
+          price
+          compare_at_price
+        }
+        seo {
+          handle
+          og_image
+        }
+      }
     }
   }
 `;
@@ -695,10 +726,127 @@ export const collectionService = {
       return [];
     }
   },
+
+  /**
+   * Optimized method to fetch collections with their products in a single GraphQL request.
+   * Use this instead of getCollections + getCollectionByHandle for each collection.
+   */
+  async getCollectionsWithProducts(
+    storeId: number,
+    productLimit: number = 8,
+    countryCode?: string,
+    maxCollections: number = 10,
+  ): Promise<Array<{ collection: CollectionListItem; products: Product[] }>> {
+    try {
+      const client = getGraphQLClient();
+      const response = await client.request<{
+        collections: Array<{
+          collection_id: number;
+          store_id: number;
+          name: string;
+          slug: string;
+          description?: string;
+          image_url?: string;
+          collection_type: string;
+          is_visible: boolean;
+          products?: Array<{
+            product_id: number;
+            title: string;
+            status: string;
+            brand?: string;
+            variants?: BackendVariant[];
+            seo?: BackendSeo;
+          }>;
+        }>;
+      }>(GET_COLLECTIONS_WITH_PRODUCTS, {
+        filter: {
+          is_visible: true,
+          store_id: storeId,
+        },
+        productLimit,
+        countryCode: countryCode || null,
+      });
+
+      return (response.collections || []).slice(0, maxCollections).map((c) => ({
+        collection: {
+          id: String(c.collection_id),
+          handle: c.slug,
+          title: c.name,
+          description: c.description || '',
+          image: normalizeMediaUrl(c.image_url) ? {
+            id: String(c.collection_id),
+            url: normalizeMediaUrl(c.image_url)!,
+            altText: c.name,
+            width: 1200,
+            height: 600,
+          } : undefined,
+          seo: {
+            title: c.name,
+            description: c.description || '',
+          },
+          storeId: c.store_id,
+        },
+        products: (c.products || []).map((p) => ({
+          id: String(p.product_id),
+          handle: p.seo?.handle || String(p.product_id),
+          title: p.title,
+          description: '',
+          status: (p.status || 'ACTIVE') as 'ACTIVE' | 'DRAFT' | 'ARCHIVED',
+          vendor: p.brand || '',
+          tags: [],
+          featuredImage: normalizeMediaUrl(p.seo?.og_image) ? {
+            id: String(p.product_id),
+            url: normalizeMediaUrl(p.seo?.og_image)!,
+            altText: p.title,
+            width: 800,
+            height: 800,
+          } : undefined,
+          images: [],
+          options: [],
+          priceRange: {
+            minPrice: {
+              amount: String(p.variants?.[0]?.price || '0'),
+              currencyCode: 'USD',
+            },
+            maxPrice: {
+              amount: String(p.variants?.[0]?.price || '0'),
+              currencyCode: 'USD',
+            },
+          },
+          compareAtPriceRange: p.variants?.[0]?.compare_at_price ? {
+            minPrice: {
+              amount: String(p.variants[0].compare_at_price),
+              currencyCode: 'USD',
+            },
+            maxPrice: {
+              amount: String(p.variants[0].compare_at_price),
+              currencyCode: 'USD',
+            },
+          } : undefined,
+          variants: (p.variants || []).map((v) => ({
+            id: String(v.variant_id),
+            sku: '',
+            title: '',
+            price: { amount: String(v.price || 0), currencyCode: 'USD' },
+            compareAtPrice: v.compare_at_price
+              ? { amount: String(v.compare_at_price), currencyCode: 'USD' }
+              : undefined,
+            availableForSale: true,
+            quantityAvailable: 100,
+            selectedOptions: [],
+          })),
+          seo: {
+            title: p.title,
+            description: '',
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })),
+      }));
+    } catch (error) {
+      console.error('Error fetching collections with products:', error);
+      return [];
+    }
+  },
 };
-
-
-
-
-
 

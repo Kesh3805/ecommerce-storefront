@@ -5,6 +5,7 @@
  */
 
 import { merchandisingService, storefrontService } from '@/services';
+import type { CategoryGridItem, CollectionSummary } from '@/services/merchandising.service';
 import { HeroBanner } from '@/components/HeroBanner';
 import { ProductCarousel } from '@/components/ProductCarousel';
 import { ArrowRight, Truck, Shield, RefreshCw } from 'lucide-react';
@@ -152,13 +153,19 @@ export default async function DynamicHomePage() {
 }
 
 // Collection Carousel Section Component
-function CollectionCarouselSection({ title, collections }: any) {
+function CollectionCarouselSection({
+  title,
+  collections,
+}: {
+  title?: string;
+  collections: CollectionSummary[];
+}) {
   return (
     <section className="py-12">
       <div className="container mx-auto px-4">
         {title && <h2 className="text-3xl font-bold text-gray-900 mb-8">{title}</h2>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {collections.map((collection: any) => (
+          {collections.map((collection) => (
             <Link
               key={collection.collection_id}
               href={`/collections/${collection.slug}`}
@@ -171,7 +178,7 @@ function CollectionCarouselSection({ title, collections }: any) {
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-blue-500 to-purple-600" />
+                <div className="w-full h-full bg-linear-to-br from-blue-500 to-purple-600" />
               )}
               <div className="absolute inset-0 bg-black/40 group-hover:bg-black/30 transition-colors" />
               <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-6">
@@ -189,13 +196,19 @@ function CollectionCarouselSection({ title, collections }: any) {
 }
 
 // Category Grid Section Component
-function CategoryGridSection({ title, categories }: any) {
+function CategoryGridSection({
+  title,
+  categories,
+}: {
+  title?: string;
+  categories: CategoryGridItem[];
+}) {
   return (
     <section className="py-12 bg-gray-50">
       <div className="container mx-auto px-4">
         {title && <h2 className="text-3xl font-bold text-gray-900 mb-8">{title}</h2>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {categories.map((category: any) => (
+          {categories.map((category) => (
             <Link
               key={category.category_id}
               href={`/categories/${category.slug}`}
@@ -208,9 +221,9 @@ function CategoryGridSection({ title, categories }: any) {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300" />
+                <div className="w-full h-full bg-linear-to-br from-gray-200 to-gray-300" />
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
                 <h3 className="font-semibold">{category.name}</h3>
                 <p className="text-sm text-gray-200">{category.product_count} products</p>

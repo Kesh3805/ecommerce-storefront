@@ -82,7 +82,7 @@ export default async function StoreCollectionPage({ params, searchParams }: Stor
     <div className="container py-8 md:py-12">
       <div className="mb-6">
         <Button variant="ghost" asChild>
-          <Link href={`/stores/${slug}${countryQuery}`}>
+          <Link href={`/stores/${slug}${countryQuery}`} prefetch={false}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Store
           </Link>
@@ -94,8 +94,8 @@ export default async function StoreCollectionPage({ params, searchParams }: Stor
         <div className="absolute -bottom-20 left-1/3 h-52 w-52 rounded-full bg-amber-200/40 blur-2xl" />
         <div className="relative">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-700">Collection</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-5xl">{collection.title}</h1>
-          {collection.description ? <p className="mt-4 max-w-2xl text-muted-foreground">{collection.description}</p> : null}
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 md:text-5xl">{collection.title}</h1>
+          {collection.description ? <p className="mt-4 max-w-2xl text-slate-600">{collection.description}</p> : null}
         </div>
       </div>
 

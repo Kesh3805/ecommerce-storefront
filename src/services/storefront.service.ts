@@ -31,6 +31,7 @@ export interface StorefrontPublicVariant {
   option3_value?: string;
   price?: string;
   compare_at_price?: string;
+  media_urls?: string[];
   inventory_available?: number;
 }
 
@@ -66,6 +67,10 @@ interface GetAvailableCountriesResponse {
 
 interface GetPublicProductByHandleResponse {
   publicProductByHandle: StorefrontPublicProduct | null;
+}
+
+interface GetPublicSearchProductsResponse {
+  publicSearchProducts: StorefrontPublicProduct[];
 }
 
 interface CarouselResponse {
@@ -122,90 +127,6 @@ const GET_PUBLIC_STORES = gql`
         store_name
         title
         brand
-        description
-        handle
-        image_url
-        media_urls
-        price
-        compare_at_price
-        variants {
-          variant_id
-          price
-          compare_at_price
-          inventory_available
-        }
-      }
-    }
-  }
-`;
-
-const GET_PUBLIC_STORES_WITH_COUNTRY_NO_MEDIA = gql`
-  query GetPublicStoresWithCountryNoMedia($storeLimit: Int, $productLimit: Int, $countryCode: String) {
-    publicStores(storeLimit: $storeLimit, productLimit: $productLimit, countryCode: $countryCode) {
-      store_id
-      name
-      products {
-        product_id
-        store_id
-        store_name
-        title
-        brand
-        description
-        handle
-        image_url
-        price
-        compare_at_price
-        variants {
-          variant_id
-          price
-          compare_at_price
-          inventory_available
-        }
-      }
-    }
-  }
-`;
-
-const GET_PUBLIC_STORES_NO_COUNTRY = gql`
-  query GetPublicStoresNoCountry($storeLimit: Int, $productLimit: Int) {
-    publicStores(storeLimit: $storeLimit, productLimit: $productLimit) {
-      store_id
-      name
-      products {
-        product_id
-        store_id
-        store_name
-        title
-        brand
-        description
-        handle
-        image_url
-        media_urls
-        price
-        compare_at_price
-        variants {
-          variant_id
-          price
-          compare_at_price
-          inventory_available
-        }
-      }
-    }
-  }
-`;
-
-const GET_PUBLIC_STORES_LEGACY = gql`
-  query GetPublicStoresLegacy($storeLimit: Int, $productLimit: Int) {
-    publicStores(storeLimit: $storeLimit, productLimit: $productLimit) {
-      store_id
-      name
-      products {
-        product_id
-        store_id
-        store_name
-        title
-        brand
-        description
         handle
         image_url
         price
@@ -232,10 +153,8 @@ const GET_PUBLIC_STORE_BY_SLUG = gql`
         store_name
         title
         brand
-        description
         handle
         image_url
-        media_urls
         price
         compare_at_price
         variants {
@@ -276,47 +195,28 @@ const GET_PUBLIC_PRODUCT_BY_HANDLE = gql`
         option3_value
         price
         compare_at_price
+        media_urls
         inventory_available
       }
     }
   }
 `;
 
-const GET_PUBLIC_PRODUCT_BY_HANDLE_WITH_COUNTRY_NO_MEDIA = gql`
-  query GetPublicProductByHandleWithCountryNoMedia($handle: String!, $countryCode: String) {
-    publicProductByHandle(handle: $handle, countryCode: $countryCode) {
-      product_id
-      store_id
-      store_name
-      title
-      brand
-      description
-      handle
-      image_url
-      price
-      compare_at_price
-      options {
-        name
-        values
-      }
-      variants {
-        variant_id
-        title
-        sku
-        option1_value
-        option2_value
-        option3_value
-        price
-        compare_at_price
-        inventory_available
-      }
-    }
-  }
-`;
-
-const GET_PUBLIC_PRODUCT_BY_HANDLE_NO_COUNTRY = gql`
-  query GetPublicProductByHandleNoCountry($handle: String!) {
-    publicProductByHandle(handle: $handle) {
+const GET_PUBLIC_SEARCH_PRODUCTS = gql`
+  query GetPublicSearchProducts(
+    $query: String!
+    $limit: Int
+    $countryCode: String
+    $storeSlug: String
+    $storeId: Int
+  ) {
+    publicSearchProducts(
+      query: $query
+      limit: $limit
+      countryCode: $countryCode
+      storeSlug: $storeSlug
+      storeId: $storeId
+    ) {
       product_id
       store_id
       store_name
@@ -341,38 +241,7 @@ const GET_PUBLIC_PRODUCT_BY_HANDLE_NO_COUNTRY = gql`
         option3_value
         price
         compare_at_price
-        inventory_available
-      }
-    }
-  }
-`;
-
-const GET_PUBLIC_PRODUCT_BY_HANDLE_LEGACY = gql`
-  query GetPublicProductByHandleLegacy($handle: String!) {
-    publicProductByHandle(handle: $handle) {
-      product_id
-      store_id
-      store_name
-      title
-      brand
-      description
-      handle
-      image_url
-      price
-      compare_at_price
-      options {
-        name
-        values
-      }
-      variants {
-        variant_id
-        title
-        sku
-        option1_value
-        option2_value
-        option3_value
-        price
-        compare_at_price
+        media_urls
         inventory_available
       }
     }
@@ -388,8 +257,6 @@ const GET_NEW_ARRIVALS = gql`
       price
       compare_at_price
       thumbnail_url
-      rating
-      review_count
       in_stock
     }
   }
@@ -404,8 +271,6 @@ const GET_BEST_SELLING = gql`
       price
       compare_at_price
       thumbnail_url
-      rating
-      review_count
       in_stock
     }
   }
@@ -420,8 +285,6 @@ const GET_TRENDING = gql`
       price
       compare_at_price
       thumbnail_url
-      rating
-      review_count
       in_stock
     }
   }
@@ -432,24 +295,6 @@ const GET_AVAILABLE_COUNTRIES = gql`
     availableCountries(storeId: $storeId)
   }
 `;
-
-function hasMissingMediaUrlsFieldError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return error.message.includes('Cannot query field "media_urls"')
-    || error.message.includes("Cannot query field 'media_urls'");
-}
-
-function hasUnknownCountryCodeArgumentError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return error.message.includes('Unknown argument "countryCode"')
-    || error.message.includes("Unknown argument 'countryCode'");
-}
 
 export const storefrontService = {
   async getPublicStoreBySlug(slug: string, productLimit = 12, countryCode?: string): Promise<StorefrontPublicStore | null> {
@@ -466,22 +311,15 @@ export const storefrontService = {
     }
 
     const client = getGraphQLClient();
-    try {
-      const response = await client.request<GetPublicStoreBySlugResponse>(GET_PUBLIC_STORE_BY_SLUG, {
-        slug: normalizedSlug,
-        productLimit,
-        countryCode: normalizedCountryCode || undefined,
-      });
+    const response = await client.request<GetPublicStoreBySlugResponse>(GET_PUBLIC_STORE_BY_SLUG, {
+      slug: normalizedSlug,
+      productLimit,
+      countryCode: normalizedCountryCode || undefined,
+    });
 
-      const result = response.publicStoreBySlug ?? null;
-      writeCache(publicStoreBySlugCache, cacheKey, result);
-      return result;
-    } catch {
-      const stores = await this.getPublicStores(30, productLimit, normalizedCountryCode || undefined).catch(() => []);
-      const result = stores.find((store) => slugifyStoreName(store.name) === normalizedSlug) ?? null;
-      writeCache(publicStoreBySlugCache, cacheKey, result);
-      return result;
-    }
+    const result = response.publicStoreBySlug ?? null;
+    writeCache(publicStoreBySlugCache, cacheKey, result);
+    return result;
   },
 
   async getPublicStores(storeLimit = 6, productLimit = 8, countryCode?: string): Promise<StorefrontPublicStore[]> {
@@ -493,53 +331,14 @@ export const storefrontService = {
     }
 
     const client = getGraphQLClient();
-    try {
-      const response = await client.request<GetPublicStoresResponse>(GET_PUBLIC_STORES, {
-        storeLimit,
-        productLimit,
-        countryCode: normalizedCountryCode || undefined,
-      });
-      const result = response.publicStores ?? [];
-      writeCache(publicStoresCache, cacheKey, result);
-      return result;
-    } catch (error) {
-      try {
-        const responseNoMediaWithCountry = await client.request<GetPublicStoresResponse>(GET_PUBLIC_STORES_WITH_COUNTRY_NO_MEDIA, {
-          storeLimit,
-          productLimit,
-          countryCode: normalizedCountryCode || undefined,
-        });
-        const resultNoMediaWithCountry = responseNoMediaWithCountry.publicStores ?? [];
-        writeCache(publicStoresCache, cacheKey, resultNoMediaWithCountry);
-        return resultNoMediaWithCountry;
-      } catch {
-        // Ignore and continue to compatibility fallbacks below.
-      }
-
-      if (!hasMissingMediaUrlsFieldError(error) && !hasUnknownCountryCodeArgumentError(error)) {
-        throw error;
-      }
-
-      try {
-        const responseNoCountry = await client.request<GetPublicStoresResponse>(GET_PUBLIC_STORES_NO_COUNTRY, {
-          storeLimit,
-          productLimit,
-        });
-        const resultNoCountry = responseNoCountry.publicStores ?? [];
-        writeCache(publicStoresCache, cacheKey, resultNoCountry);
-        return resultNoCountry;
-      } catch {
-        // Ignore and continue to legacy fallback.
-      }
-
-      const fallbackResponse = await client.request<GetPublicStoresResponse>(GET_PUBLIC_STORES_LEGACY, {
-        storeLimit,
-        productLimit,
-      });
-      const fallback = fallbackResponse.publicStores ?? [];
-      writeCache(publicStoresCache, cacheKey, fallback);
-      return fallback;
-    }
+    const response = await client.request<GetPublicStoresResponse>(GET_PUBLIC_STORES, {
+      storeLimit,
+      productLimit,
+      countryCode: normalizedCountryCode || undefined,
+    });
+    const result = response.publicStores ?? [];
+    writeCache(publicStoresCache, cacheKey, result);
+    return result;
   },
 
   async getPublicProductByHandle(handle: string, countryCode?: string): Promise<StorefrontPublicProduct | null> {
@@ -551,49 +350,43 @@ export const storefrontService = {
     }
 
     const client = getGraphQLClient();
-    try {
-      const response = await client.request<GetPublicProductByHandleResponse>(GET_PUBLIC_PRODUCT_BY_HANDLE, {
-        handle,
-        countryCode: normalizedCountryCode || undefined,
-      });
-      const result = response.publicProductByHandle;
-      writeCache(publicProductCache, cacheKey, result);
-      return result;
-    } catch (error) {
-      try {
-        const responseNoMediaWithCountry = await client.request<GetPublicProductByHandleResponse>(GET_PUBLIC_PRODUCT_BY_HANDLE_WITH_COUNTRY_NO_MEDIA, {
-          handle,
-          countryCode: normalizedCountryCode || undefined,
-        });
-        const resultNoMediaWithCountry = responseNoMediaWithCountry.publicProductByHandle;
-        writeCache(publicProductCache, cacheKey, resultNoMediaWithCountry);
-        return resultNoMediaWithCountry;
-      } catch {
-        // Ignore and continue to compatibility fallbacks below.
-      }
+    const response = await client.request<GetPublicProductByHandleResponse>(GET_PUBLIC_PRODUCT_BY_HANDLE, {
+      handle,
+      countryCode: normalizedCountryCode || undefined,
+    });
+    const result = response.publicProductByHandle;
+    writeCache(publicProductCache, cacheKey, result);
+    return result;
+  },
 
-      if (!hasMissingMediaUrlsFieldError(error) && !hasUnknownCountryCodeArgumentError(error)) {
-        throw error;
-      }
-
-      try {
-        const responseNoCountry = await client.request<GetPublicProductByHandleResponse>(GET_PUBLIC_PRODUCT_BY_HANDLE_NO_COUNTRY, {
-          handle,
-        });
-        const resultNoCountry = responseNoCountry.publicProductByHandle;
-        writeCache(publicProductCache, cacheKey, resultNoCountry);
-        return resultNoCountry;
-      } catch {
-        // Ignore and continue to legacy fallback.
-      }
-
-      const fallbackResponse = await client.request<GetPublicProductByHandleResponse>(GET_PUBLIC_PRODUCT_BY_HANDLE_LEGACY, {
-        handle,
-      });
-      const fallback = fallbackResponse.publicProductByHandle;
-      writeCache(publicProductCache, cacheKey, fallback);
-      return fallback;
+  async searchPublicProducts(
+    query: string,
+    options?: {
+      limit?: number;
+      countryCode?: string;
+      storeSlug?: string;
+      storeId?: number;
+    },
+  ): Promise<StorefrontPublicProduct[]> {
+    const normalizedQuery = (query ?? '').trim();
+    if (normalizedQuery.length < 2) {
+      return [];
     }
+
+    const normalizedCountryCode = options?.countryCode?.trim().toUpperCase() || undefined;
+    const normalizedStoreSlug = options?.storeSlug?.trim() ? slugifyStoreName(options.storeSlug) : undefined;
+    const normalizedLimit = Math.max(1, Math.min(options?.limit ?? 24, 60));
+
+    const client = getGraphQLClient();
+    const response = await client.request<GetPublicSearchProductsResponse>(GET_PUBLIC_SEARCH_PRODUCTS, {
+      query: normalizedQuery,
+      limit: normalizedLimit,
+      countryCode: normalizedCountryCode,
+      storeSlug: normalizedStoreSlug,
+      storeId: options?.storeId,
+    });
+
+    return response.publicSearchProducts ?? [];
   },
 
   async getAvailableCountries(storeId: number): Promise<string[]> {
@@ -614,44 +407,20 @@ export const storefrontService = {
   },
 
   async getNewArrivals(limit = 12, storeId?: number): Promise<CarouselProduct[]> {
-    try {
-      const client = getGraphQLClient();
-      const response = await client.request<CarouselResponse>(GET_NEW_ARRIVALS, {
-        limit,
-        storeId,
-      });
-      return response.newArrivals ?? [];
-    } catch (error) {
-      console.error('Error fetching new arrivals:', error);
-      return [];
-    }
+    const client = getGraphQLClient();
+    const response = await client.request<CarouselResponse>(GET_NEW_ARRIVALS, { limit, storeId });
+    return response.newArrivals ?? [];
   },
 
   async getBestSelling(limit = 12, storeId?: number): Promise<CarouselProduct[]> {
-    try {
-      const client = getGraphQLClient();
-      const response = await client.request<CarouselResponse>(GET_BEST_SELLING, {
-        limit,
-        storeId,
-      });
-      return response.bestSelling ?? [];
-    } catch (error) {
-      console.error('Error fetching best sellers:', error);
-      return [];
-    }
+    const client = getGraphQLClient();
+    const response = await client.request<CarouselResponse>(GET_BEST_SELLING, { limit, storeId });
+    return response.bestSelling ?? [];
   },
 
   async getTrending(limit = 12, storeId?: number): Promise<CarouselProduct[]> {
-    try {
-      const client = getGraphQLClient();
-      const response = await client.request<CarouselResponse>(GET_TRENDING, {
-        limit,
-        storeId,
-      });
-      return response.trending ?? [];
-    } catch (error) {
-      console.error('Error fetching trending products:', error);
-      return [];
-    }
+    const client = getGraphQLClient();
+    const response = await client.request<CarouselResponse>(GET_TRENDING, { limit, storeId });
+    return response.trending ?? [];
   },
 };

@@ -1,9 +1,20 @@
 import { GraphQLClient } from 'graphql-request';
 import { siteConfig } from '@/config';
 
+function normalizeGraphQLEndpoint(endpoint: string): string {
+  if (typeof window !== 'undefined') {
+    return endpoint;
+  }
+
+  // Node on Windows can incur significant localhost resolution delays.
+  // Prefer explicit loopback for server-side requests.
+  return endpoint.replace('://localhost', '://127.0.0.1');
+}
+
 // GraphQL Client for server-side requests
 export function createGraphQLClient(headers?: Record<string, string>) {
-  return new GraphQLClient(siteConfig.api.graphqlEndpoint, {
+  const endpoint = normalizeGraphQLEndpoint(siteConfig.api.graphqlEndpoint);
+  return new GraphQLClient(endpoint, {
     headers: {
       'Content-Type': 'application/json',
       ...headers,
@@ -30,7 +41,8 @@ export function getGraphQLClient(): GraphQLClient {
 
 // Set auth token for authenticated requests
 export function setClientAuthToken(token: string) {
-  clientInstance = new GraphQLClient(siteConfig.api.graphqlEndpoint, {
+  const endpoint = normalizeGraphQLEndpoint(siteConfig.api.graphqlEndpoint);
+  clientInstance = new GraphQLClient(endpoint, {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
