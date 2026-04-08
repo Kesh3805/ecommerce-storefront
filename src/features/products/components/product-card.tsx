@@ -5,10 +5,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Heart } from 'lucide-react';
 import type { Product } from '@/types';
-import { formatMoney, isOnSale, calculateDiscount, getProductUrl } from '@/lib/utils';
+import { formatMoney, isOnSale, calculateDiscount, getProductUrl, cn, normalizeMediaUrl, shouldUseUnoptimizedImage } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 
 interface ProductCardProps {
   product: Product;
@@ -19,40 +18,17 @@ interface ProductCardProps {
 
 export function ProductCard({ product, priority = false, className, productHref }: ProductCardProps) {
   const { handle, title, vendor, featuredImage, priceRange, compareAtPriceRange, variants } = product;
-
-  const canRenderImage = (() => {
-    if (!featuredImage?.url) {
-      return false;
-    }
-
-    try {
-      const parsed = new URL(featuredImage.url);
-      return parsed.hostname !== 'example.com';
-    } catch {
-      return false;
-    }
-  })();
-
-  const useUnoptimizedImage = (() => {
-    if (!featuredImage?.url) {
-      return false;
-    }
-
-    try {
-      const parsed = new URL(featuredImage.url);
-      return parsed.hostname.endsWith('gstatic.com');
-    } catch {
-      return false;
-    }
-  })();
+  const normalizedFeaturedImageUrl = normalizeMediaUrl(featuredImage?.url);
+  const canRenderImage = Boolean(normalizedFeaturedImageUrl);
+  const useUnoptimizedImage = shouldUseUnoptimizedImage(normalizedFeaturedImageUrl);
 
   const [imageVisible, setImageVisible] = useState(canRenderImage);
-  
+
   const minPrice = priceRange.minPrice;
   const compareAtPrice = compareAtPriceRange?.minPrice;
   const onSale = isOnSale(minPrice, compareAtPrice);
   const discount = onSale && compareAtPrice ? calculateDiscount(minPrice, compareAtPrice) : 0;
-  
+
   const isAvailable = variants.some((v) => v.availableForSale);
   const hasMultiplePrices = priceRange.minPrice.amount !== priceRange.maxPrice.amount;
   const href = productHref || getProductUrl(handle);
@@ -62,10 +38,10 @@ export function ProductCard({ product, priority = false, className, productHref 
       {/* Image Container */}
       <Link href={href} className="block">
         <div className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
-          {imageVisible && featuredImage ? (
+          {imageVisible && normalizedFeaturedImageUrl ? (
             <Image
-              src={featuredImage.url}
-              alt={featuredImage.altText || title}
+              src={normalizedFeaturedImageUrl}
+              alt={featuredImage?.altText || title}
               fill
               sizes="(min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw"
               className="object-cover transition-transform duration-300 group-hover:scale-105"
@@ -78,7 +54,7 @@ export function ProductCard({ product, priority = false, className, productHref 
               <span className="text-gray-400">No image</span>
             </div>
           )}
-          
+
           {/* Badges */}
           <div className="absolute top-2 left-2 flex flex-col gap-1">
             {onSale && discount > 0 && (
@@ -88,7 +64,7 @@ export function ProductCard({ product, priority = false, className, productHref 
               <Badge variant="secondary">Sold Out</Badge>
             )}
           </div>
-          
+
           {/* Quick Actions */}
           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
@@ -114,13 +90,13 @@ export function ProductCard({ product, priority = false, className, productHref 
             {vendor}
           </p>
         )}
-        
+
         <Link href={href}>
           <h3 className="text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors">
             {title}
           </h3>
         </Link>
-        
+
         {/* Price */}
         <div className="flex items-center gap-2">
           <span className={cn(
@@ -130,7 +106,7 @@ export function ProductCard({ product, priority = false, className, productHref 
             {hasMultiplePrices ? 'From ' : ''}
             {formatMoney(minPrice)}
           </span>
-          
+
           {onSale && compareAtPrice && (
             <span className="text-sm text-muted-foreground line-through">
               {formatMoney(compareAtPrice)}

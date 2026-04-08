@@ -28,8 +28,7 @@ async function resolveStoreScopedProduct(slug: string, handle: string, countryCo
     return null;
   }
 
-  const countryStores = await storefrontService.getPublicStores(30, 80, countryCode).catch(() => []);
-  const activeStore = countryStores.find((store) => slugifyStoreName(store.name) === slug);
+  const activeStore = await storefrontService.getPublicStoreBySlug(slug, 80, countryCode).catch(() => null);
   if (!activeStore) {
     return null;
   }

@@ -56,6 +56,10 @@ interface GetPublicStoresResponse {
   publicStores: StorefrontPublicStore[];
 }
 
+interface GetPublicStoreBySlugResponse {
+  publicStoreBySlug: StorefrontPublicStore | null;
+}
+
 interface GetAvailableCountriesResponse {
   availableCountries: string[];
 }
@@ -78,8 +82,13 @@ type TimedCacheEntry<T> = {
 };
 
 const publicStoresCache = new Map<string, TimedCacheEntry<StorefrontPublicStore[]>>();
+const publicStoreBySlugCache = new Map<string, TimedCacheEntry<StorefrontPublicStore | null>>();
 const publicProductCache = new Map<string, TimedCacheEntry<StorefrontPublicProduct | null>>();
 const availableCountriesCache = new Map<string, TimedCacheEntry<string[]>>();
+
+function slugifyStoreName(name: string): string {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
 
 function readCache<T>(cache: Map<string, TimedCacheEntry<T>>, key: string): T | null {
   const existing = cache.get(key);
@@ -199,6 +208,34 @@ const GET_PUBLIC_STORES_LEGACY = gql`
         description
         handle
         image_url
+        price
+        compare_at_price
+        variants {
+          variant_id
+          price
+          compare_at_price
+          inventory_available
+        }
+      }
+    }
+  }
+`;
+
+const GET_PUBLIC_STORE_BY_SLUG = gql`
+  query GetPublicStoreBySlug($slug: String!, $productLimit: Int, $countryCode: String) {
+    publicStoreBySlug(slug: $slug, productLimit: $productLimit, countryCode: $countryCode) {
+      store_id
+      name
+      products {
+        product_id
+        store_id
+        store_name
+        title
+        brand
+        description
+        handle
+        image_url
+        media_urls
         price
         compare_at_price
         variants {
@@ -415,6 +452,38 @@ function hasUnknownCountryCodeArgumentError(error: unknown): boolean {
 }
 
 export const storefrontService = {
+  async getPublicStoreBySlug(slug: string, productLimit = 12, countryCode?: string): Promise<StorefrontPublicStore | null> {
+    const normalizedSlug = slugifyStoreName(slug || '');
+    if (!normalizedSlug) {
+      return null;
+    }
+
+    const normalizedCountryCode = countryCode?.trim().toUpperCase() || '';
+    const cacheKey = `${normalizedSlug}:${productLimit}:${normalizedCountryCode}`;
+    const cached = readCache(publicStoreBySlugCache, cacheKey);
+    if (cached !== null) {
+      return cached;
+    }
+
+    const client = getGraphQLClient();
+    try {
+      const response = await client.request<GetPublicStoreBySlugResponse>(GET_PUBLIC_STORE_BY_SLUG, {
+        slug: normalizedSlug,
+        productLimit,
+        countryCode: normalizedCountryCode || undefined,
+      });
+
+      const result = response.publicStoreBySlug ?? null;
+      writeCache(publicStoreBySlugCache, cacheKey, result);
+      return result;
+    } catch {
+      const stores = await this.getPublicStores(30, productLimit, normalizedCountryCode || undefined).catch(() => []);
+      const result = stores.find((store) => slugifyStoreName(store.name) === normalizedSlug) ?? null;
+      writeCache(publicStoreBySlugCache, cacheKey, result);
+      return result;
+    }
+  },
+
   async getPublicStores(storeLimit = 6, productLimit = 8, countryCode?: string): Promise<StorefrontPublicStore[]> {
     const normalizedCountryCode = countryCode?.trim().toUpperCase() || '';
     const cacheKey = `${storeLimit}:${productLimit}:${normalizedCountryCode}`;

@@ -13,32 +13,22 @@ interface StoreCollectionPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-function slugifyStoreName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
 export async function generateMetadata({ params }: StoreCollectionPageProps): Promise<Metadata> {
   const { slug, collectionSlug } = await params;
-  const stores = await storefrontService.getPublicStores(30, 1).catch(() => []);
-  const store = stores.find((s) => slugifyStoreName(s.name) === slug);
-
-  if (!store) {
-    return { title: 'Collection' };
-  }
-
-  const collection = await collectionService.getCollectionByHandle({
-    handle: collectionSlug,
-    storeId: store.store_id,
-    first: 1,
-  }).catch(() => null);
-
-  if (!collection) {
-    return { title: 'Collection Not Found' };
-  }
+  const collectionTitle = collectionSlug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  const storeTitle = slug
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 
   return {
-    title: collection.seo?.title || `${collection.title} | ${store.name}`,
-    description: collection.seo?.description || collection.description,
+    title: collectionTitle ? `${collectionTitle} | ${storeTitle || 'Store'}` : 'Collection',
+    description: collectionTitle ? `Browse ${collectionTitle} products.` : 'Browse this collection.',
   };
 }
 
@@ -61,8 +51,7 @@ export default async function StoreCollectionPage({ params, searchParams }: Stor
   const sortKey = hasDirection ? sort.replace(/_(ASC|DESC)$/, '') : sort;
   const reverse = hasDirection ? sort.endsWith('_DESC') : false;
 
-  const stores = await storefrontService.getPublicStores(30, 1).catch(() => []);
-  const store = stores.find((s) => slugifyStoreName(s.name) === slug);
+  const store = await storefrontService.getPublicStoreBySlug(slug, 1, country).catch(() => null);
 
   if (!store) {
     notFound();
@@ -114,3 +103,5 @@ export default async function StoreCollectionPage({ params, searchParams }: Stor
     </div>
   );
 }
+
+

@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { storefrontService } from '@/services/storefront.service';
 import { collectionService } from '@/services/collection.service';
 import { normalizeCountryCode } from '@/lib/countries';
+import { normalizeMediaUrl, shouldUseUnoptimizedImage } from '@/lib/utils';
 
 interface StorePageProps {
   params: Promise<{ slug: string }>;
@@ -11,10 +12,8 @@ interface StorePageProps {
 }
 
 export const revalidate = 300;
-
-function slugifyStoreName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
+const MAX_COLLECTION_SECTIONS = 4;
+const COLLECTION_PREVIEW_PRODUCT_LIMIT = 6;
 
 function getStoreTheme(storeName: string) {
   if (storeName.toLowerCase().includes('bob')) {
@@ -27,37 +26,11 @@ function getStoreTheme(storeName: string) {
   }
 
   return {
-    wrapper: 'bg-rose-50 text-rose-950',
-    heading: 'text-rose-700',
-    panel: 'border-rose-300 bg-white/80',
-    accent: 'text-rose-600',
+    wrapper: 'bg-slate-950 text-slate-100',
+    heading: 'text-cyan-300',
+    panel: 'border-cyan-500/30 bg-slate-900/70',
+    accent: 'text-cyan-200',
   };
-}
-
-function shouldUseNativeImage(imageUrl?: string): boolean {
-  if (!imageUrl) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(imageUrl);
-    return parsed.hostname.endsWith('gstatic.com');
-  } catch {
-    return false;
-  }
-}
-
-function shouldRenderProductImage(imageUrl?: string): boolean {
-  if (!imageUrl) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(imageUrl);
-    return parsed.hostname !== 'example.com';
-  } catch {
-    return false;
-  }
 }
 
 function formatPrice(value?: string): string {
@@ -78,8 +51,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
   const query = searchParams ? await searchParams : undefined;
   const requestedCountry = normalizeCountryCode(query?.country);
 
-  const stores = await storefrontService.getPublicStores(20, 12, requestedCountry).catch(() => []);
-  const store = stores.find((item) => slugifyStoreName(item.name) === slug);
+  const store = await storefrontService.getPublicStoreBySlug(slug, 12, requestedCountry).catch(() => null);
 
   if (!store) {
     notFound();
@@ -88,15 +60,15 @@ export default async function StorePage({ params, searchParams }: StorePageProps
   const activeCountry = requestedCountry;
   const countryQuery = activeCountry ? `?country=${activeCountry}` : '';
 
-  const collections = await collectionService.getCollections(50, store.store_id).catch(() => []);
+  const collections = await collectionService.getCollections(MAX_COLLECTION_SECTIONS, store.store_id).catch(() => []);
   const collectionSections = await Promise.all(
-    collections.slice(0, 6).map(async (collection) => {
+    collections.slice(0, MAX_COLLECTION_SECTIONS).map(async (collection) => {
       const detail = await collectionService
         .getCollectionByHandle({
           handle: collection.handle,
           storeId: store.store_id,
           countryCode: activeCountry,
-          first: 10,
+          first: COLLECTION_PREVIEW_PRODUCT_LIMIT,
           page: 1,
           sortKey: 'BEST_SELLING',
         })
@@ -108,6 +80,7 @@ export default async function StorePage({ params, searchParams }: StorePageProps
       };
     }),
   );
+
   const theme = getStoreTheme(store.name);
 
   return (
@@ -139,30 +112,34 @@ export default async function StorePage({ params, searchParams }: StorePageProps
 
                 {products.length > 0 ? (
                   <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-                    {products.map((product) => (
-                      <Link
-                        key={product.id}
-                        href={`/stores/${slug}/products/${product.handle}${countryQuery}`}
-                        className={`rounded-xl border p-3 transition-transform hover:-translate-y-1 ${theme.panel}`}
-                      >
-                        <div className="relative aspect-square overflow-hidden rounded-lg bg-black/10">
-                          {shouldRenderProductImage(product.featuredImage?.url) ? (
-                            <Image
-                              src={product.featuredImage!.url}
-                              alt={product.featuredImage?.altText || product.title}
-                              fill
-                              className="object-cover"
-                              sizes="(min-width: 1024px) 20vw, (min-width: 768px) 33vw, 50vw"
-                              unoptimized={shouldUseNativeImage(product.featuredImage?.url)}
-                            />
-                          ) : (
-                            <div className="absolute inset-0 bg-linear-to-br from-slate-800/20 to-slate-600/10" />
-                          )}
-                        </div>
-                        <h3 className="mt-3 line-clamp-2 text-sm font-semibold">{product.title}</h3>
-                        <p className={`mt-1 text-sm ${theme.accent}`}>{formatPrice(product.priceRange.minPrice.amount)}</p>
-                      </Link>
-                    ))}
+                    {products.map((product) => {
+                      const productImageUrl = normalizeMediaUrl(product.featuredImage?.url);
+
+                      return (
+                        <Link
+                          key={product.id}
+                          href={`/stores/${slug}/products/${product.handle}${countryQuery}`}
+                          className={`rounded-xl border p-3 transition-transform hover:-translate-y-1 ${theme.panel}`}
+                        >
+                          <div className="relative aspect-square overflow-hidden rounded-lg bg-black/10">
+                            {productImageUrl ? (
+                              <Image
+                                src={productImageUrl}
+                                alt={product.featuredImage?.altText || product.title}
+                                fill
+                                className="object-cover"
+                                sizes="(min-width: 1024px) 20vw, (min-width: 768px) 33vw, 50vw"
+                                unoptimized={shouldUseUnoptimizedImage(productImageUrl)}
+                              />
+                            ) : (
+                              <div className="absolute inset-0 bg-linear-to-br from-slate-800/20 to-slate-600/10" />
+                            )}
+                          </div>
+                          <h3 className="mt-3 line-clamp-2 text-sm font-semibold">{product.title}</h3>
+                          <p className={`mt-1 text-sm ${theme.accent}`}>{formatPrice(product.priceRange.minPrice.amount)}</p>
+                        </Link>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-sm opacity-80">No products available in this collection.</p>
@@ -175,31 +152,35 @@ export default async function StorePage({ params, searchParams }: StorePageProps
         </section>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {store.products.map((product) => (
-            <Link key={product.product_id} href={`/stores/${slug}/products/${product.handle}${countryQuery}`} className={`rounded-2xl border p-4 transition-transform hover:-translate-y-1 ${theme.panel}`}>
-              <div className="relative aspect-4/3 overflow-hidden rounded-xl bg-black/10">
-                {shouldRenderProductImage(product.image_url) ? (
-                  <Image
-                    src={product.image_url!}
-                    alt={product.title}
-                    fill
-                    className="object-cover"
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                    unoptimized={shouldUseNativeImage(product.image_url)}
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-linear-to-br from-slate-800/30 to-slate-600/20" />
-                )}
-              </div>
-              <p className="mt-4 text-xs uppercase tracking-wide opacity-70">{product.brand || 'Brand'}</p>
-              <h2 className="mt-1 line-clamp-2 text-lg font-semibold">{product.title}</h2>
-              <p className="mt-2 line-clamp-2 text-sm opacity-80">{product.description || 'No product description available.'}</p>
-              <div className="mt-3 flex items-center justify-between text-sm">
-                <p className={theme.accent}>{formatPrice(product.price)}</p>
-                <p className="opacity-70">{product.variants?.length ?? 0} variants</p>
-              </div>
-            </Link>
-          ))}
+          {store.products.map((product) => {
+            const productImageUrl = normalizeMediaUrl(product.image_url);
+
+            return (
+              <Link key={product.product_id} href={`/stores/${slug}/products/${product.handle}${countryQuery}`} className={`rounded-2xl border p-4 transition-transform hover:-translate-y-1 ${theme.panel}`}>
+                <div className="relative aspect-4/3 overflow-hidden rounded-xl bg-black/10">
+                  {productImageUrl ? (
+                    <Image
+                      src={productImageUrl}
+                      alt={product.title}
+                      fill
+                      className="object-cover"
+                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                      unoptimized={shouldUseUnoptimizedImage(productImageUrl)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-linear-to-br from-slate-800/30 to-slate-600/20" />
+                  )}
+                </div>
+                <p className="mt-4 text-xs uppercase tracking-wide opacity-70">{product.brand || 'Brand'}</p>
+                <h2 className="mt-1 line-clamp-2 text-lg font-semibold">{product.title}</h2>
+                <p className="mt-2 line-clamp-2 text-sm opacity-80">{product.description || 'No product description available.'}</p>
+                <div className="mt-3 flex items-center justify-between text-sm">
+                  <p className={theme.accent}>{formatPrice(product.price)}</p>
+                  <p className="opacity-70">{product.variants?.length ?? 0} variants</p>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </div>

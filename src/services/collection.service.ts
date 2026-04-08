@@ -1,6 +1,7 @@
 import { getGraphQLClient } from '@/lib/graphql/client';
 import { gql } from 'graphql-request';
 import type { Collection, ProductConnection, ProductSortKey, FilterInput, SearchFilter } from '@/types';
+import { normalizeMediaUrl } from '@/lib/utils';
 import { storefrontService } from './storefront.service';
 
 const COLLECTION_CACHE_TTL_MS = 60_000;
@@ -12,10 +13,11 @@ type TimedCollectionCacheEntry = {
 
 const collectionByHandleCache = new Map<string, TimedCollectionCacheEntry>();
 const collectionStoreResolutionCache = new Map<string, { expiresAt: number; storeId: number | null }>();
+let supportsCollectionProductsCountryCodeArgument: boolean | null = null;
 
 // Queries for our custom backend
 const GET_COLLECTION_BY_SLUG = gql`
-  query GetCollectionBySlug($slug: String!, $storeId: Int!, $productLimit: Int!) {
+  query GetCollectionBySlug($slug: String!, $storeId: Int!, $productLimit: Int!, $countryCode: String) {
     collectionBySlug(slug: $slug, storeId: $storeId) {
       collection_id
       name
@@ -24,7 +26,58 @@ const GET_COLLECTION_BY_SLUG = gql`
       image_url
       collection_type
       is_visible
-      product_count
+      meta_title
+      meta_description
+      products(limit: $productLimit, countryCode: $countryCode) {
+        product_id
+        title
+        status
+        description
+        brand
+        created_at
+        updated_at
+        categories {
+          category_id
+          name
+          slug
+        }
+        variants {
+          variant_id
+          sku
+          option1_value
+          option2_value
+          option3_value
+          price
+          compare_at_price
+        }
+        options {
+          option_id
+          name
+          values {
+            value_id
+            value
+            position
+          }
+        }
+        seo {
+          handle
+          og_image
+        }
+      }
+    }
+  }
+`;
+
+const GET_COLLECTION_BY_SLUG_LEGACY = gql`
+  query GetCollectionBySlugLegacy($slug: String!, $storeId: Int!, $productLimit: Int!) {
+    collectionBySlug(slug: $slug, storeId: $storeId) {
+      collection_id
+      name
+      slug
+      description
+      image_url
+      collection_type
+      is_visible
       meta_title
       meta_description
       products(limit: $productLimit) {
@@ -66,7 +119,6 @@ const GET_COLLECTION_BY_SLUG = gql`
     }
   }
 `;
-
 const GET_ALL_COLLECTIONS = gql`
   query GetCollections($filter: CollectionFilterInput) {
     collections(filter: $filter) {
@@ -181,19 +233,15 @@ function buildVariantTitle(variant: BackendVariant): string {
   return parts.length > 0 ? parts.join(' / ') : 'Default';
 }
 
-function isValidImageUrl(url?: string): boolean {
-  if (!url) {
+
+function hasUnknownCollectionProductsCountryCodeArgumentError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
     return false;
   }
 
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname !== 'example.com';
-  } catch {
-    return false;
-  }
+  return error.message.includes('Unknown argument "countryCode" on field "Collection.products"')
+    || error.message.includes("Unknown argument 'countryCode' on field 'Collection.products'");
 }
-
 function buildSearchFilters(products: BackendProduct[]): SearchFilter[] {
   const brandCounts = new Map<string, number>();
   const categoryCounts = new Map<string, { count: number; label: string }>();
@@ -300,8 +348,8 @@ function transformCollection(
 
     const imageLookupKey = p.seo?.handle || String(p.product_id);
     const fallbackMediaUrl = imageByHandle.get(imageLookupKey) || undefined;
-    const primarySeoImage = isValidImageUrl(p.seo?.og_image) ? p.seo?.og_image : undefined;
-    const fallbackImage = isValidImageUrl(fallbackMediaUrl) ? fallbackMediaUrl : undefined;
+    const primarySeoImage = normalizeMediaUrl(p.seo?.og_image);
+    const fallbackImage = normalizeMediaUrl(fallbackMediaUrl);
     const imageUrl = primarySeoImage || fallbackImage;
 
     return {
@@ -424,10 +472,10 @@ function transformCollection(
     handle: backendCollection.slug,
     title: backendCollection.name,
     description: backendCollection.description || '',
-    image: backendCollection.image_url
+    image: normalizeMediaUrl(backendCollection.image_url)
       ? {
           id: String(backendCollection.collection_id),
-          url: backendCollection.image_url,
+          url: normalizeMediaUrl(backendCollection.image_url)!,
           altText: backendCollection.name,
           width: 1200,
           height: 600,
@@ -508,7 +556,7 @@ export const collectionService = {
    */
   async getCollectionByHandle(params: GetCollectionParams): Promise<CollectionWithProducts | null> {
     const { handle, storeId, countryCode } = params;
-    const requestedCount = Math.max(24, Math.min((params.first || 24) * Math.max(1, params.page || 1), 80));
+    const requestedCount = Math.max(1, Math.min((params.first || 24) * Math.max(1, params.page || 1), 80));
     const normalizedCountryCode = countryCode?.trim().toUpperCase();
 
     const cacheKey = JSON.stringify({
@@ -533,54 +581,56 @@ export const collectionService = {
       }
 
       const client = getGraphQLClient();
-      const response = await client.request<GetCollectionResponse>(GET_COLLECTION_BY_SLUG, {
-        slug: handle,
-        storeId: resolvedStoreId,
-        productLimit: requestedCount,
-      });
-      
+      let response: GetCollectionResponse | null = null;
+      const shouldTryCountryAwareQuery = Boolean(normalizedCountryCode) && supportsCollectionProductsCountryCodeArgument !== false;
+
+      if (shouldTryCountryAwareQuery) {
+        try {
+          response = await client.request<GetCollectionResponse>(GET_COLLECTION_BY_SLUG, {
+            slug: handle,
+            storeId: resolvedStoreId,
+            productLimit: requestedCount,
+            countryCode: normalizedCountryCode || undefined,
+          });
+          supportsCollectionProductsCountryCodeArgument = true;
+        } catch (error) {
+          if (!hasUnknownCollectionProductsCountryCodeArgumentError(error)) {
+            throw error;
+          }
+
+          supportsCollectionProductsCountryCodeArgument = false;
+        }
+      }
+
+      if (!response) {
+        response = await client.request<GetCollectionResponse>(GET_COLLECTION_BY_SLUG_LEGACY, {
+          slug: handle,
+          storeId: resolvedStoreId,
+          productLimit: requestedCount,
+        });
+
+        if (normalizedCountryCode && response.collectionBySlug?.products?.length) {
+          const products = response.collectionBySlug.products;
+          const availabilityChecks = await Promise.all(
+            products.map((product) => {
+              const lookupKey = product.seo?.handle || String(product.product_id);
+              return storefrontService
+                .getPublicProductByHandle(lookupKey, normalizedCountryCode)
+                .then((resolved) => Boolean(resolved))
+                .catch(() => false);
+            }),
+          );
+
+          response.collectionBySlug.products = products.filter((_, index) => availabilityChecks[index]);
+        }
+      }
+
       if (!response.collectionBySlug) {
         return null;
       }
 
-      if (normalizedCountryCode) {
-        const products = response.collectionBySlug.products || [];
-        const availabilityChecks = await Promise.all(
-          products.map((product) => {
-            const lookupKey = product.seo?.handle || String(product.product_id);
-            return storefrontService
-              .getPublicProductByHandle(lookupKey, normalizedCountryCode)
-              .then((resolved) => Boolean(resolved))
-              .catch(() => false);
-          }),
-        );
-
-        response.collectionBySlug.products = products.filter((_, index) => availabilityChecks[index]);
-      }
 
       const imageByHandle = new Map<string, string>();
-      const productsNeedingFallback = (response.collectionBySlug.products || []).filter(
-        (product) => !isValidImageUrl(product.seo?.og_image),
-      );
-      const needsImageFallback = productsNeedingFallback.length > 0;
-
-      if (needsImageFallback) {
-        const lookupKeys = Array.from(
-          new Set(productsNeedingFallback.map((product) => product.seo?.handle || String(product.product_id)).filter(Boolean)),
-        );
-
-        const fallbackProducts = await Promise.all(
-          lookupKeys.map((lookupKey) => storefrontService.getPublicProductByHandle(lookupKey)),
-        );
-
-        for (let i = 0; i < fallbackProducts.length; i += 1) {
-          const product = fallbackProducts[i];
-          const key = lookupKeys[i];
-          if (product?.image_url) {
-            imageByHandle.set(key, product.image_url);
-          }
-        }
-      }
 
       const transformed = transformCollection(response.collectionBySlug, params, imageByHandle);
 
@@ -627,9 +677,9 @@ export const collectionService = {
         handle: c.slug,
         title: c.name,
         description: c.description || '',
-        image: c.image_url ? {
+        image: normalizeMediaUrl(c.image_url) ? {
           id: String(c.collection_id),
-          url: c.image_url,
+          url: normalizeMediaUrl(c.image_url)!,
           altText: c.name,
           width: 1200,
           height: 600,
@@ -646,3 +696,9 @@ export const collectionService = {
     }
   },
 };
+
+
+
+
+
+

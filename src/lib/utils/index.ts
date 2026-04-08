@@ -1,12 +1,68 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { Money } from '@/types';
+import { siteConfig } from '@/config';
 
 /**
  * Merge Tailwind CSS classes with clsx
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
+}
+/**
+ * Normalize backend media URLs so Next Image can render relative upload paths.
+ */
+export function normalizeMediaUrl(url?: string | null): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const candidate = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.hostname === 'example.com') {
+      return undefined;
+    }
+
+    return parsed.toString();
+  } catch {
+    const normalizedPath = candidate.startsWith('/') ? candidate : `/${candidate}`;
+
+    try {
+      const baseUrl = siteConfig.api.baseUrl.replace(/\/+$/, '');
+      const resolved = new URL(normalizedPath, `${baseUrl}/`);
+      if (resolved.hostname === 'example.com') {
+        return undefined;
+      }
+
+      return resolved.toString();
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+export function canRenderMediaUrl(url?: string | null): boolean {
+  return Boolean(normalizeMediaUrl(url));
+}
+
+export function shouldUseUnoptimizedImage(url?: string | null): boolean {
+  const normalized = normalizeMediaUrl(url);
+  if (!normalized) {
+    return false;
+  }
+
+  try {
+    return new URL(normalized).hostname.endsWith('gstatic.com');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -219,3 +275,4 @@ export function calculateCartTotals(items: { price: number; quantity: number }[]
     { subtotal: 0, itemCount: 0 }
   );
 }
+
