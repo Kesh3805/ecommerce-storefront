@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Store, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { VariantInventoryList } from '@/app/products/[handle]/variant-inventory-list';
 import { storefrontService } from '@/services/storefront.service';
 
 interface ProductPageProps {
@@ -214,37 +215,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
           ) : null}
 
           {productVariants.length > 0 ? (
-            <div className="rounded-xl border bg-card p-5">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Variants</h2>
-              <div className="space-y-2">
-                {productVariants.map((variant) => {
-                  const variantPrice = formatCurrency(variant.price);
-                  const variantCompareAtPrice = formatCurrency(variant.compare_at_price);
-                  const hasInventory = variant.inventory_available == null || variant.inventory_available > 0;
-
-                  return (
-                    <div key={variant.variant_id} className="rounded-md border bg-background px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">{variant.title}</p>
-                        <p className={`text-xs font-medium ${hasInventory ? 'text-green-700' : 'text-amber-700'}`}>
-                          {hasInventory
-                            ? variant.inventory_available != null
-                              ? `${variant.inventory_available} in stock`
-                              : 'In stock'
-                            : 'Out of stock'}
-                        </p>
-                      </div>
-                      {(variantPrice || variantCompareAtPrice) ? (
-                        <p className="mt-1 text-sm text-foreground/80">
-                          {variantPrice ?? 'Price unavailable'}
-                          {variantCompareAtPrice ? <span className="ml-2 text-muted-foreground line-through">{variantCompareAtPrice}</span> : null}
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <VariantInventoryList productId={product.product_id} variants={productVariants} />
           ) : null}
 
           <div className="flex flex-wrap gap-3">

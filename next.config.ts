@@ -39,6 +39,21 @@ const nextConfig: NextConfig = {
         hostname: '**.gstatic.com',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'media.istockphoto.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'street9.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.street9.com',
+        pathname: '/**',
+      },
     ],
   },
 };

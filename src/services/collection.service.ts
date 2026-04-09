@@ -17,7 +17,7 @@ let supportsCollectionProductsCountryCodeArgument: boolean | null = null;
 
 // Queries for our custom backend
 const GET_COLLECTION_BY_SLUG = gql`
-  query GetCollectionBySlug($slug: String!, $storeId: Int!, $productLimit: Int!, $countryCode: String) {
+  query GetCollectionBySlug($slug: String!, $storeId: Int!, $productLimit: Int!, $productOffset: Int!, $countryCode: String) {
     collectionBySlug(slug: $slug, storeId: $storeId) {
       collection_id
       name
@@ -26,9 +26,10 @@ const GET_COLLECTION_BY_SLUG = gql`
       image_url
       collection_type
       is_visible
+      product_count
       meta_title
       meta_description
-      products(limit: $productLimit, countryCode: $countryCode) {
+      products(limit: $productLimit, offset: $productOffset, countryCode: $countryCode) {
         product_id
         title
         status
@@ -69,7 +70,7 @@ const GET_COLLECTION_BY_SLUG = gql`
 `;
 
 const GET_COLLECTION_BY_SLUG_LEGACY = gql`
-  query GetCollectionBySlugLegacy($slug: String!, $storeId: Int!, $productLimit: Int!) {
+  query GetCollectionBySlugLegacy($slug: String!, $storeId: Int!, $productLimit: Int!, $productOffset: Int!) {
     collectionBySlug(slug: $slug, storeId: $storeId) {
       collection_id
       name
@@ -78,9 +79,10 @@ const GET_COLLECTION_BY_SLUG_LEGACY = gql`
       image_url
       collection_type
       is_visible
+      product_count
       meta_title
       meta_description
-      products(limit: $productLimit) {
+      products(limit: $productLimit, offset: $productOffset) {
         product_id
         title
         status
@@ -330,6 +332,10 @@ function transformCollection(
   backendCollection: BackendCollection,
   params: GetCollectionParams,
   imageByHandle: Map<string, string>,
+  options?: {
+    serverPaginated?: boolean;
+    totalAvailable?: number;
+  },
 ): Collection & { products: ProductConnection; filters: SearchFilter[] } {
   const first = params.first || 24;
   const page = params.page || 1;
@@ -448,6 +454,48 @@ function transformCollection(
       _brand: p.brand || '',
     };
   });
+
+  if (options?.serverPaginated) {
+    const offset = Math.max(0, (page - 1) * first);
+    const totalAvailable = Math.max(
+      rawProducts.length,
+      Number(options.totalAvailable ?? backendCollection.product_count ?? rawProducts.length),
+    );
+
+    return {
+      id: String(backendCollection.collection_id),
+      handle: backendCollection.slug,
+      title: backendCollection.name,
+      description: backendCollection.description || '',
+      image: normalizeMediaUrl(backendCollection.image_url)
+        ? {
+            id: String(backendCollection.collection_id),
+            url: normalizeMediaUrl(backendCollection.image_url)!,
+            altText: backendCollection.name,
+            width: 1200,
+            height: 600,
+          }
+        : undefined,
+      seo: {
+        title: backendCollection.meta_title || backendCollection.name,
+        description: backendCollection.meta_description || backendCollection.description || '',
+      },
+      filters: [],
+      products: {
+        edges: rawProducts.map((product, i: number) => ({
+          cursor: `cursor-${offset + i}`,
+          node: product,
+        })),
+        pageInfo: {
+          hasNextPage: offset + rawProducts.length < totalAvailable,
+          hasPreviousPage: offset > 0,
+          startCursor: rawProducts.length > 0 ? `cursor-${offset}` : undefined,
+          endCursor: rawProducts.length > 0 ? `cursor-${offset + rawProducts.length - 1}` : undefined,
+        },
+        totalCount: totalAvailable,
+      },
+    };
+  }
 
   const filteredProducts = rawProducts.filter((product) => {
     if (!params.filters || params.filters.length === 0) {
@@ -587,7 +635,15 @@ export const collectionService = {
    */
   async getCollectionByHandle(params: GetCollectionParams): Promise<CollectionWithProducts | null> {
     const { handle, storeId, countryCode } = params;
-    const requestedCount = Math.max(1, Math.min((params.first || 24) * Math.max(1, params.page || 1), 80));
+    const first = Math.max(1, Math.min(params.first || 24, 80));
+    const page = Math.max(1, params.page || 1);
+    const hasClientRefinement = Boolean(params.filters?.length)
+      || normalizeSortValue(params.sortKey) !== 'BEST_SELLING'
+      || Boolean(params.reverse);
+    const requestedCount = hasClientRefinement
+      ? Math.max(1, Math.min(first * page, 500))
+      : first;
+    const requestedOffset = hasClientRefinement ? 0 : Math.max(0, (page - 1) * first);
     const normalizedCountryCode = countryCode?.trim().toUpperCase();
 
     const cacheKey = JSON.stringify({
@@ -621,6 +677,7 @@ export const collectionService = {
             slug: handle,
             storeId: resolvedStoreId,
             productLimit: requestedCount,
+            productOffset: requestedOffset,
             countryCode: normalizedCountryCode || undefined,
           });
           supportsCollectionProductsCountryCodeArgument = true;
@@ -638,6 +695,7 @@ export const collectionService = {
           slug: handle,
           storeId: resolvedStoreId,
           productLimit: requestedCount,
+          productOffset: requestedOffset,
         });
 
         if (normalizedCountryCode && response.collectionBySlug?.products?.length) {
@@ -663,7 +721,21 @@ export const collectionService = {
 
       const imageByHandle = new Map<string, string>();
 
-      const transformed = transformCollection(response.collectionBySlug, params, imageByHandle);
+      const transformed = transformCollection(
+        response.collectionBySlug,
+        {
+          ...params,
+          first,
+          page,
+        },
+        imageByHandle,
+        hasClientRefinement
+          ? undefined
+          : {
+              serverPaginated: true,
+              totalAvailable: response.collectionBySlug.product_count,
+            },
+      );
 
       const result = {
         ...(transformed as CollectionWithProducts),

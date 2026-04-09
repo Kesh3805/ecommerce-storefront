@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Search, Heart, User, ShoppingBag, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { normalizeMediaUrl, shouldUseUnoptimizedImage } from '@/lib/utils';
 import type { StorefrontPublicProduct, StorefrontPublicVariant } from '@/services/storefront.service';
 
 interface StoreProductViewProps {
@@ -18,25 +19,7 @@ function isValidImage(url?: string): boolean {
     return false;
   }
 
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname !== 'example.com';
-  } catch {
-    return false;
-  }
-}
-
-function isUnoptimizedImage(url?: string): boolean {
-  if (!url) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(url);
-    return parsed.hostname.endsWith('gstatic.com');
-  } catch {
-    return false;
-  }
+  return Boolean(normalizeMediaUrl(url));
 }
 
 function formatCurrency(value?: string): string {
@@ -61,11 +44,23 @@ function sanitizeDescriptionHtml(html: string): string {
 
 export function StoreProductView({ slug, product, countryCode }: StoreProductViewProps) {
   const productMedia = useMemo(
-    () => Array.from(new Set([...(product.media_urls || []), ...(product.image_url ? [product.image_url] : [])].filter(Boolean))),
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...(product.media_urls || []).map((url) => normalizeMediaUrl(url)).filter((url): url is string => Boolean(url)),
+            ...(product.image_url ? [normalizeMediaUrl(product.image_url)] : []).filter((url): url is string => Boolean(url)),
+          ],
+        ),
+      ),
     [product.media_urls, product.image_url],
   );
 
   const [selectedMediaUrl, setSelectedMediaUrl] = useState<string | null>(null);
+  const [failedMediaUrls, setFailedMediaUrls] = useState<Record<string, true>>({});
+  const [dbInventoryByVariantId, setDbInventoryByVariantId] = useState<Record<number, number>>({});
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryLoadFailed, setInventoryLoadFailed] = useState(false);
 
   const initialSelectedByOption = useMemo(() => {
     const firstVariant = product.variants?.[0];
@@ -118,6 +113,54 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
     return byOptions || product.variants[0];
   }, [product.options, product.variants, selectedByOption]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadVariantInventory = async () => {
+      setInventoryLoading(true);
+      setInventoryLoadFailed(false);
+      setDbInventoryByVariantId({});
+
+      try {
+        const response = await fetch(`/api/products/${product.product_id}/variant-inventory`, {
+          method: 'GET',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch inventory (${response.status})`);
+        }
+
+        const payload = (await response.json()) as {
+          inventory?: Array<{ variant_id: number; inventory_available: number }>;
+        };
+
+        const nextByVariantId: Record<number, number> = {};
+        for (const item of payload.inventory || []) {
+          nextByVariantId[item.variant_id] = item.inventory_available;
+        }
+
+        if (!cancelled) {
+          setDbInventoryByVariantId(nextByVariantId);
+        }
+      } catch {
+        if (!cancelled) {
+          setInventoryLoadFailed(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setInventoryLoading(false);
+        }
+      }
+    };
+
+    void loadVariantInventory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product.product_id]);
+
   const hasUnavailableSelection = useMemo(() => {
     const options = product.options || [];
     if (options.length === 0) {
@@ -128,9 +171,30 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
     return isSelectionComplete && !selectedVariant;
   }, [product.options, selectedByOption, selectedVariant]);
 
+  const getVariantInventory = (variant?: StorefrontPublicVariant | null): number | null => {
+    if (!variant) {
+      return null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(dbInventoryByVariantId, variant.variant_id)) {
+      return dbInventoryByVariantId[variant.variant_id];
+    }
+
+    if (inventoryLoading || inventoryLoadFailed) {
+      return null;
+    }
+
+    return 0;
+  };
+
+  const selectedVariantInventory = getVariantInventory(selectedVariant);
+  const canAddToCart = !hasUnavailableSelection && !inventoryLoading && !inventoryLoadFailed && (selectedVariantInventory ?? 0) > 0;
+
   const media = useMemo(() => {
     const variantMedia = Array.isArray(selectedVariant?.media_urls)
-      ? selectedVariant.media_urls.filter((url) => Boolean(url))
+      ? selectedVariant.media_urls
+          .map((url) => normalizeMediaUrl(url))
+          .filter((url): url is string => Boolean(url))
       : [];
 
     if (variantMedia.length > 0) {
@@ -140,12 +204,48 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
     return productMedia;
   }, [selectedVariant, productMedia]);
 
-  const selectedImage = (
-    selectedMediaUrl && media.includes(selectedMediaUrl)
-      ? selectedMediaUrl
-      : media[0]
-  ) || product.image_url;
-  const canRenderSelectedImage = isValidImage(selectedImage);
+  useEffect(() => {
+    const variantMedia = Array.isArray(selectedVariant?.media_urls)
+      ? selectedVariant.media_urls.filter((url): url is string => Boolean(url))
+      : [];
+
+    if (variantMedia.length > 0) {
+      setSelectedMediaUrl(variantMedia[0]);
+      return;
+    }
+
+    setSelectedMediaUrl(productMedia[0] ?? null);
+  }, [selectedVariant?.variant_id, selectedVariant?.media_urls, productMedia]);
+
+  const markMediaAsFailed = (url?: string | null) => {
+    const normalized = normalizeMediaUrl(url);
+    if (!normalized) {
+      return;
+    }
+
+    setFailedMediaUrls((current) => {
+      if (current[normalized]) {
+        return current;
+      }
+
+      return { ...current, [normalized]: true };
+    });
+  };
+
+  const isRenderableMedia = (url?: string | null) => {
+    const normalized = normalizeMediaUrl(url);
+    if (!normalized) {
+      return false;
+    }
+
+    return !failedMediaUrls[normalized];
+  };
+
+  const selectedImage =
+    [selectedMediaUrl && media.includes(selectedMediaUrl) ? selectedMediaUrl : undefined, ...media]
+      .find((url): url is string => Boolean(url) && isRenderableMedia(url)) ||
+    normalizeMediaUrl(product.image_url);
+  const canRenderSelectedImage = isRenderableMedia(selectedImage) && isValidImage(selectedImage);
   const countryQuery = countryCode ? `?country=${countryCode}` : '';
 
   return (
@@ -178,8 +278,16 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
                 className={`h-20 w-20 overflow-hidden rounded-md border ${item === selectedImage ? 'ring-2 ring-primary' : ''}`}
                 onClick={() => setSelectedMediaUrl(item)}
               >
-                {isValidImage(item) ? (
-                  <Image src={item} alt={product.title} width={80} height={80} className="h-full w-full object-cover" unoptimized={isUnoptimizedImage(item)} />
+                {isRenderableMedia(item) ? (
+                  <Image
+                    src={item}
+                    alt={product.title}
+                    width={80}
+                    height={80}
+                    className="h-full w-full object-cover"
+                    unoptimized={shouldUseUnoptimizedImage(item)}
+                    onError={() => markMediaAsFailed(item)}
+                  />
                 ) : (
                   <div className="h-full w-full bg-muted" />
                 )}
@@ -198,7 +306,8 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
               width={900}
               height={900}
               className="h-full max-h-[720px] w-full object-cover"
-              unoptimized={isUnoptimizedImage(selectedImage)}
+              unoptimized={shouldUseUnoptimizedImage(selectedImage)}
+              onError={() => markMediaAsFailed(selectedImage)}
               priority
             />
           ) : (
@@ -244,11 +353,16 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
           </div>
 
           <div className="space-y-3">
-            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-              Available: {hasUnavailableSelection ? 0 : (selectedVariant?.inventory_available ?? 0)}
-            </div>
-            <Button className="w-full" disabled={hasUnavailableSelection || (selectedVariant?.inventory_available ?? 0) <= 0}>
-              {hasUnavailableSelection ? 'Unavailable combination' : (selectedVariant?.inventory_available ?? 0) > 0 ? 'Add to Cart' : 'Out of Stock'}
+            <Button className="w-full" disabled={!canAddToCart}>
+              {hasUnavailableSelection
+                ? 'Unavailable combination'
+                : inventoryLoading
+                  ? 'Checking inventory...'
+                  : inventoryLoadFailed
+                    ? 'Inventory unavailable'
+                  : (selectedVariantInventory ?? 0) > 0
+                    ? 'Add to Cart'
+                    : 'Out of order'}
             </Button>
           </div>
 
@@ -268,14 +382,16 @@ export function StoreProductView({ slug, product, countryCode }: StoreProductVie
             <div>
               <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Variants</h2>
               <div className="space-y-2">
-                {product.variants.map((variant) => (
-                  <div key={variant.variant_id} className="rounded-md border bg-background px-3 py-2 text-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <span>{buildVariantTitle(variant)}</span>
-                      <span className="text-muted-foreground">{formatCurrency(variant.price)}</span>
+                {product.variants.map((variant) => {
+                  return (
+                    <div key={variant.variant_id} className="rounded-md border bg-background px-3 py-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{buildVariantTitle(variant)}</span>
+                        <span className="text-muted-foreground">{formatCurrency(variant.price)}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : null}

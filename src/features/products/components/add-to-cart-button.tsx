@@ -98,11 +98,6 @@ export function AddToCartButton({
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          {variant && variant.quantityAvailable < 10 && variant.quantityAvailable > 0 && (
-            <span className="text-sm text-orange-600">
-              Only {variant.quantityAvailable} left
-            </span>
-          )}
         </div>
       )}
 

@@ -29,6 +29,10 @@ export function ProductDetails({ product }: ProductDetailsProps) {
 
   const [isWishlisted, setIsWishlisted] = useState(false);
 
+  const galleryImages = selectedVariant?.image
+    ? [selectedVariant.image, ...product.images.filter((image) => image.url !== selectedVariant.image?.url)]
+    : product.images;
+
   // Price display
   const displayPrice = selectedVariant?.price || product.priceRange.minPrice;
   const compareAtPrice = selectedVariant?.compareAtPrice || product.compareAtPriceRange?.minPrice;
@@ -38,13 +42,12 @@ export function ProductDetails({ product }: ProductDetailsProps) {
   // Availability
   const isAvailable = selectedVariant?.availableForSale ?? 
     product.variants.some((v) => v.availableForSale);
-  const quantityAvailable = selectedVariant?.quantityAvailable ?? 0;
 
   return (
     <div className="lg:grid lg:grid-cols-2 lg:gap-12">
       {/* Left Column - Gallery */}
       <div>
-        <ProductGallery images={product.images} productTitle={product.title} />
+        <ProductGallery images={galleryImages} productTitle={product.title} />
       </div>
 
       {/* Right Column - Product Info */}
@@ -91,11 +94,6 @@ export function ProductDetails({ product }: ProductDetailsProps) {
             <>
               <Check className="h-4 w-4 text-green-600" />
               <span className="text-sm text-green-600 font-medium">In Stock</span>
-              {quantityAvailable > 0 && quantityAvailable < 10 && (
-                <span className="text-sm text-orange-600">
-                  - Only {quantityAvailable} left
-                </span>
-              )}
             </>
           ) : (
             <span className="text-sm text-red-600 font-medium">Out of Stock</span>

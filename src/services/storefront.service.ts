@@ -35,6 +35,11 @@ export interface StorefrontPublicVariant {
   inventory_available?: number;
 }
 
+export interface StorefrontVariantInventory {
+  variant_id: number;
+  inventory_available: number;
+}
+
 export interface StorefrontPublicStore {
   store_id: number;
   name: string;
@@ -71,6 +76,17 @@ interface GetPublicProductByHandleResponse {
 
 interface GetPublicSearchProductsResponse {
   publicSearchProducts: StorefrontPublicProduct[];
+}
+
+interface GetProductVariantsInventoryResponse {
+  productVariants: Array<{
+    variant_id: number;
+    inventory_item?: {
+      levels?: Array<{
+        available_quantity: number;
+      }>;
+    };
+  }>;
 }
 
 interface CarouselResponse {
@@ -196,7 +212,6 @@ const GET_PUBLIC_PRODUCT_BY_HANDLE = gql`
         price
         compare_at_price
         media_urls
-        inventory_available
       }
     }
   }
@@ -293,6 +308,19 @@ const GET_TRENDING = gql`
 const GET_AVAILABLE_COUNTRIES = gql`
   query GetAvailableCountries($storeId: Int!) {
     availableCountries(storeId: $storeId)
+  }
+`;
+
+const GET_PRODUCT_VARIANTS_INVENTORY = gql`
+  query GetProductVariantsInventory($productId: Int!) {
+    productVariants(productId: $productId) {
+      variant_id
+      inventory_item {
+        levels {
+          available_quantity
+        }
+      }
+    }
   }
 `;
 
@@ -404,6 +432,29 @@ export const storefrontService = {
     const result = [...new Set((response.availableCountries ?? []).map((code) => code.toUpperCase()))].sort();
     writeCache(availableCountriesCache, cacheKey, result);
     return result;
+  },
+
+  async getProductVariantInventory(productId: number): Promise<StorefrontVariantInventory[]> {
+    if (!Number.isInteger(productId) || productId <= 0) {
+      return [];
+    }
+
+    const client = getGraphQLClient();
+    const response = await client.request<GetProductVariantsInventoryResponse>(GET_PRODUCT_VARIANTS_INVENTORY, {
+      productId,
+    });
+
+    return (response.productVariants || []).map((variant) => {
+      const totalAvailable = (variant.inventory_item?.levels || []).reduce(
+        (sum, level) => sum + level.available_quantity,
+        0,
+      );
+
+      return {
+        variant_id: variant.variant_id,
+        inventory_available: totalAvailable,
+      };
+    });
   },
 
   async getNewArrivals(limit = 12, storeId?: number): Promise<CarouselProduct[]> {

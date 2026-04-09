@@ -115,6 +115,8 @@ export function CollectionContent({ collection, initialSort, storeSlug, initialC
   
   const currentPage = parseInt(searchParams.get('page') || '1', 10);
   const totalPages = Math.ceil(totalCount / siteConfig.products.perPage);
+  const shownStart = totalCount > 0 ? (currentPage - 1) * siteConfig.products.perPage + 1 : 0;
+  const shownEnd = totalCount > 0 ? shownStart + products.length - 1 : 0;
   const storeSlugFromQuery = searchParams.get('storeSlug');
   const effectiveStoreSlug = storeSlug || storeSlugFromQuery;
   const countryFromQuery = searchParams.get('country') || undefined;
@@ -141,6 +143,12 @@ export function CollectionContent({ collection, initialSort, storeSlug, initialC
           onSortChange={handleSortChange}
           totalCount={totalCount}
         />
+
+        {products.length > 0 && (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Showing {shownStart}-{shownEnd} of {totalCount} products.
+          </p>
+        )}
 
         {/* Products Grid */}
         {products.length > 0 ? (
