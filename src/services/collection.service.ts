@@ -4,7 +4,7 @@ import type { Collection, ProductConnection, ProductSortKey, FilterInput, Search
 import { normalizeMediaUrl } from '@/lib/utils';
 import { storefrontService } from './storefront.service';
 
-const COLLECTION_CACHE_TTL_MS = 60_000;
+const COLLECTION_CACHE_TTL_MS = 5_000;
 
 type TimedCollectionCacheEntry = {
   expiresAt: number;

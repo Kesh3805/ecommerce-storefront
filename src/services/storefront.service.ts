@@ -95,7 +95,7 @@ interface CarouselResponse {
   trending?: CarouselProduct[];
 }
 
-const STOREFRONT_CACHE_TTL_MS = 60_000;
+const STOREFRONT_CACHE_TTL_MS = 5_000;
 
 type TimedCacheEntry<T> = {
   expiresAt: number;

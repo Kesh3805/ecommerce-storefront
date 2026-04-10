@@ -61,7 +61,7 @@ export async function generateMetadata({ params, searchParams }: StoreProductPag
   };
 }
 
-export const revalidate = 300;
+export const revalidate = 5;
 
 export default async function StoreProductPage({ params, searchParams }: StoreProductPageProps) {
   const { slug, handle } = await params;

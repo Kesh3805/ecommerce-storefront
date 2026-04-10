@@ -11,7 +11,7 @@ interface StorePageProps {
   searchParams?: Promise<{ country?: string }>;
 }
 
-export const revalidate = 300;
+export const revalidate = 5;
 const MAX_COLLECTION_SECTIONS = 4;
 const COLLECTION_PREVIEW_PRODUCT_LIMIT = 6;
 

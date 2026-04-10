@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: StoreCollectionPageProps): Pr
   };
 }
 
-export const revalidate = 300;
+export const revalidate = 5;
 
 export default async function StoreCollectionPage({ params, searchParams }: StoreCollectionPageProps) {
   const { slug, collectionSlug } = await params;

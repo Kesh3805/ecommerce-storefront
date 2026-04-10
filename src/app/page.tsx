@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { normalizeCountryCode } from '@/lib/countries';
 import { storefrontService } from '@/services/storefront.service';
 
-export const revalidate = 300;
+export const revalidate = 5;
 
 function slugifyStoreName(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
