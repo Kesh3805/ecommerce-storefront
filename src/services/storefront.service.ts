@@ -95,7 +95,7 @@ interface CarouselResponse {
   trending?: CarouselProduct[];
 }
 
-const STOREFRONT_CACHE_TTL_MS = 5_000;
+const STOREFRONT_CACHE_TTL_MS = 0;
 
 type TimedCacheEntry<T> = {
   expiresAt: number;
@@ -112,12 +112,16 @@ function slugifyStoreName(name: string): string {
 }
 
 function readCache<T>(cache: Map<string, TimedCacheEntry<T>>, key: string): T | null {
+  if (STOREFRONT_CACHE_TTL_MS <= 0) {
+    return null;
+  }
+
   const existing = cache.get(key);
   if (!existing) {
     return null;
   }
 
-  if (Date.now() > existing.expiresAt) {
+  if (Date.now() >= existing.expiresAt) {
     cache.delete(key);
     return null;
   }
@@ -126,6 +130,10 @@ function readCache<T>(cache: Map<string, TimedCacheEntry<T>>, key: string): T | 
 }
 
 function writeCache<T>(cache: Map<string, TimedCacheEntry<T>>, key: string, value: T): void {
+  if (STOREFRONT_CACHE_TTL_MS <= 0) {
+    return;
+  }
+
   cache.set(key, {
     value,
     expiresAt: Date.now() + STOREFRONT_CACHE_TTL_MS,

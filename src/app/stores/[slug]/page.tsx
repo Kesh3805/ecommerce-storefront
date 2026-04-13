@@ -12,6 +12,7 @@ interface StorePageProps {
 }
 
 export const revalidate = 5;
+export const dynamic = 'force-dynamic';
 const MAX_COLLECTION_SECTIONS = 4;
 const COLLECTION_PREVIEW_PRODUCT_LIMIT = 6;
 

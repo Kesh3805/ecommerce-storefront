@@ -62,6 +62,7 @@ export async function generateMetadata({ params, searchParams }: StoreProductPag
 }
 
 export const revalidate = 5;
+export const dynamic = 'force-dynamic';
 
 export default async function StoreProductPage({ params, searchParams }: StoreProductPageProps) {
   const { slug, handle } = await params;

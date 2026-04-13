@@ -14,11 +14,25 @@ function normalizeGraphQLEndpoint(endpoint: string): string {
 // GraphQL Client for server-side requests
 export function createGraphQLClient(headers?: Record<string, string>) {
   const endpoint = normalizeGraphQLEndpoint(siteConfig.api.graphqlEndpoint);
+
+  const uncachedFetch: typeof fetch = (input, init) => {
+    if (typeof window !== 'undefined') {
+      return fetch(input, init);
+    }
+
+    return fetch(input, {
+      ...(init ?? {}),
+      cache: 'no-store',
+      next: { revalidate: 0 },
+    } as RequestInit & { next?: { revalidate: number } });
+  };
+
   return new GraphQLClient(endpoint, {
     headers: {
       'Content-Type': 'application/json',
       ...headers,
     },
+    fetch: uncachedFetch,
   });
 }
 

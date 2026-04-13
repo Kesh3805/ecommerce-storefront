@@ -3,6 +3,33 @@ import { twMerge } from 'tailwind-merge';
 import type { Money } from '@/types';
 import { siteConfig } from '@/config';
 
+const KNOWN_BROKEN_UNSPLASH_IDS = new Set([
+  '1480455624303-ba4a156ce1cb',
+  '1550503080-60f2dbf88325',
+]);
+
+const UNSPLASH_FALLBACK_IMAGE =
+  'https://images.unsplash.com/photo-1576566588028-4147f3842f27?auto=format&fit=crop&w=1200&q=80';
+
+function remapKnownBrokenMediaUrl(candidate: string): string {
+  try {
+    const parsed = new URL(candidate);
+    if (!parsed.hostname.endsWith('unsplash.com')) {
+      return candidate;
+    }
+
+    const photoIdMatch = parsed.pathname.match(/\/photo-([A-Za-z0-9-]+)/);
+    const photoId = photoIdMatch?.[1];
+    if (!photoId || !KNOWN_BROKEN_UNSPLASH_IDS.has(photoId)) {
+      return candidate;
+    }
+
+    return UNSPLASH_FALLBACK_IMAGE;
+  } catch {
+    return candidate;
+  }
+}
+
 /**
  * Merge Tailwind CSS classes with clsx
  */
@@ -23,16 +50,17 @@ export function normalizeMediaUrl(url?: string | null): string | undefined {
   }
 
   const candidate = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed;
+  const remappedCandidate = remapKnownBrokenMediaUrl(candidate);
 
   try {
-    const parsed = new URL(candidate);
+    const parsed = new URL(remappedCandidate);
     if (parsed.hostname === 'example.com') {
       return undefined;
     }
 
     return parsed.toString();
   } catch {
-    const normalizedPath = candidate.startsWith('/') ? candidate : `/${candidate}`;
+    const normalizedPath = remappedCandidate.startsWith('/') ? remappedCandidate : `/${remappedCandidate}`;
 
     try {
       const baseUrl = siteConfig.api.baseUrl.replace(/\/+$/, '');

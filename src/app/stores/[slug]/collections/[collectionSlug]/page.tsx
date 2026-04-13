@@ -33,6 +33,7 @@ export async function generateMetadata({ params }: StoreCollectionPageProps): Pr
 }
 
 export const revalidate = 5;
+export const dynamic = 'force-dynamic';
 
 export default async function StoreCollectionPage({ params, searchParams }: StoreCollectionPageProps) {
   const { slug, collectionSlug } = await params;

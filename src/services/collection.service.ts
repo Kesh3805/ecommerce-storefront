@@ -4,7 +4,7 @@ import type { Collection, ProductConnection, ProductSortKey, FilterInput, Search
 import { normalizeMediaUrl } from '@/lib/utils';
 import { storefrontService } from './storefront.service';
 
-const COLLECTION_CACHE_TTL_MS = 5_000;
+const COLLECTION_CACHE_TTL_MS = 0;
 
 type TimedCollectionCacheEntry = {
   expiresAt: number;
@@ -756,7 +756,7 @@ export const collectionService = {
       console.error('Error fetching collection:', error);
       collectionByHandleCache.set(cacheKey, {
         value: null,
-        expiresAt: Date.now() + 5_000,
+        expiresAt: Date.now() + COLLECTION_CACHE_TTL_MS,
       });
       return null;
     }
